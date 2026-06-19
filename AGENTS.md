@@ -122,3 +122,22 @@ identification.
 - `make check` loads typespec **source**. If `../emacs-typespec` has stale
   `.elc` files they can shadow the source — run `(cd ../emacs-typespec && make clean)`.
 - No git remote is configured yet for this repo.
+
+## Agent skills
+
+Configuration the engineering skills read from. See `docs/agents/` for details.
+
+### Issue tracker
+
+Issues and PRDs live as local markdown files under `.scratch/<feature>/` (this
+repo has no remote). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root (created lazily
+by the skills, not now). See `docs/agents/domain.md`.
