@@ -72,21 +72,20 @@
 
 (ert-deftest elistan-walk-guard-clause-narrowing ()
   "An early-exit guard narrows the fall-through path (divergence-aware join)."
-  ;; After `(unless (integerp x) (error ...))', x is integer, so
-  ;; `number-to-string' accepts it -> NO finding.  Without the narrowing, x
-  ;; would still be `(or string integer)' and a mismatch would be reported.
-  (elistan-walk-test--declare 'et-guard '(function ((or string integer)) string))
-  (should-not
-   (elistan-walk-defun
-    '(defun et-guard (x)
-       (unless (integerp x) (error "not an integer"))
-       (number-to-string x))))
-  ;; Sanity: without the guard, the same call IS flagged.
-  (elistan-walk-test--declare 'et-noguard '(function ((or string integer)) string))
-  (should
-   (elistan-walk-test--of
-    (elistan-walk-defun '(defun et-noguard (x) (number-to-string x)))
-    'call-type-mismatch)))
+  ;; After `(when (stringp x) (error ...))', x is integer; a later `(stringp x)'
+  ;; is then provably false -> a dead-branch finding.  Without the guard there is
+  ;; no such finding (stringp could go either way).  This isolates the narrowing.
+  (elistan-walk-test--declare 'et-guard '(function ((or string integer)) integer))
+  (should (elistan-walk-test--of
+           (elistan-walk-defun
+            '(defun et-guard (x)
+               (when (stringp x) (error "no strings"))
+               (if (stringp x) 1 2)))
+           'dead-branch))
+  (elistan-walk-test--declare 'et-noguard '(function ((or string integer)) integer))
+  (should-not (elistan-walk-test--of
+               (elistan-walk-defun '(defun et-noguard (x) (if (stringp x) 1 2)))
+               'dead-branch)))
 
 (ert-deftest elistan-walk-loop-no-false-positive ()
   "A mutating loop widens assigned variables and emits no spurious findings."

@@ -50,17 +50,19 @@
   (memq type '(mixed t)))
 
 (defun elistan-type-consistent-p (value expected)
-  "Return non-nil if a VALUE-typed thing is acceptable where EXPECTED is wanted.
+  "Return non-nil unless VALUE and EXPECTED are *provably* incompatible.
 
-This is gradual consistency: the dynamic (`unknown') is consistent with every
-type in both directions.  Otherwise it defers to typespec's compatibility
-check.
+This is the gradual acceptance relation behind the robustness posture
+(docs/adr/0004): a finding is emitted only when the two types are disjoint
+(their intersection is `never').  Anything that merely cannot be proven
+compatible — a wider value where a narrower type is wanted, a union that
+partly overlaps — is accepted, so the checker stays free of false positives.
+The dynamic (`unknown') is consistent with everything, in both directions.
 
-TODO: promote to typespec as the public gradual-consistency relation, replacing
-the direct call to the internal `typespec-eval-call--type-compatible-p'."
+TODO: promote to typespec as the public gradual-consistency relation."
   (cond
    ((or (elistan-type-dynamic-p value) (elistan-type-dynamic-p expected)) t)
-   (t (typespec-eval-call--type-compatible-p value expected))))
+   (t (not (elistan-type-never-p (elistan-type-meet value expected))))))
 
 (defun elistan-type-meet (a b)
   "Intersect types A and B (the true-branch refinement operation).
