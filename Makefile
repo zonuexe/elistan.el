@@ -5,9 +5,11 @@ EMACS ?= emacs
 TYPESPEC ?= ../emacs-typespec
 LOAD_PATH ?= -L . -L $(TYPESPEC)
 
-EL_SOURCES = elistan.el
+# All elistan sources except test files, and all test files.
+EL_SOURCES = $(filter-out %-test.el,$(wildcard elistan*.el))
+EL_TESTS = $(wildcard *-test.el)
 
-.PHONY: test check compile clean
+.PHONY: test check compile clean test-source
 
 # clean -> test (source) -> compile -> test (.elc)
 test check: clean
@@ -17,7 +19,7 @@ test check: clean
 
 test-source:
 	$(EMACS) -Q --batch $(LOAD_PATH) \
-		-l ert -l elistan-test \
+		-l ert $(addprefix -l ,$(EL_TESTS)) \
 		-f ert-run-tests-batch-and-exit
 
 compile:
