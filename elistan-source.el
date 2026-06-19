@@ -69,6 +69,9 @@
     (string-to-number  . (function (string &optional integer) number))
     (1+                . (function (number) number))
     (1-                . (function (number) number))
+    (+                 . (function (&rest number) number))
+    (-                 . (function (&rest number) number))
+    (*                 . (function (&rest number) number))
     (identity          . (function (mixed) mixed)))
   "elistan's own fallback function-type coverage.
 Consulted only when typespec has neither a declaration nor a builtin entry.
