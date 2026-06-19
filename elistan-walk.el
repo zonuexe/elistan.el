@@ -361,26 +361,28 @@ guard return types as `boolean'; anything typespec cannot type is `unknown'."
 
 (defun elistan-walk-defun (form)
   "Analyse a function-defining FORM and return a list of `elistan-finding'."
-  (pcase form
-    (`(,(or 'defun 'defsubst 'cl-defun) ,name ,arglist . ,body)
-     (let* ((symbols-with-pos-enabled t)
-            (elistan-walk--findings nil)
-            (funspec (elistan-source-function-spec (elistan-walk--bare name)))
-            (env (elistan-walk--seed-env arglist funspec))
-            (expanded (macroexpand-all (cons 'progn body)))
-            (body-type (car (elistan-walk-type expanded env))))
-       (when funspec
-         (let ((declared (elistan-source-return funspec)))
-           (when (and declared
-                      (not (memq (car-safe declared) '(:guard :guard! :assert)))
-                      (not (eq declared 'unknown))
-                      (not (elistan-type-never-p body-type))
-                      (not (elistan-type-dynamic-p body-type))
-                      (not (elistan-type-consistent-p body-type declared)))
-             (elistan-walk--emit 'return-type-mismatch (elistan-walk--pos name)
-                                 (list :declared declared :actual body-type)))))
-       (nreverse elistan-walk--findings)))
-    (_ nil)))
+  ;; Bind the flag around the whole match so positioned symbols (from a
+  ;; position-aware reader) compare as their bare symbols throughout.
+  (let ((symbols-with-pos-enabled t))
+    (pcase form
+      (`(,(or 'defun 'defsubst 'cl-defun) ,name ,arglist . ,body)
+       (let* ((elistan-walk--findings nil)
+              (funspec (elistan-source-function-spec (elistan-walk--bare name)))
+              (env (elistan-walk--seed-env arglist funspec))
+              (expanded (macroexpand-all (cons 'progn body)))
+              (body-type (car (elistan-walk-type expanded env))))
+         (when funspec
+           (let ((declared (elistan-source-return funspec)))
+             (when (and declared
+                        (not (memq (car-safe declared) '(:guard :guard! :assert)))
+                        (not (eq declared 'unknown))
+                        (not (elistan-type-never-p body-type))
+                        (not (elistan-type-dynamic-p body-type))
+                        (not (elistan-type-consistent-p body-type declared)))
+               (elistan-walk--emit 'return-type-mismatch (elistan-walk--pos name)
+                                   (list :declared declared :actual body-type)))))
+         (nreverse elistan-walk--findings)))
+      (_ nil))))
 
 (defun elistan-walk-form (form)
   "Analyse a single top-level FORM; non-function-defining forms yield nil."
