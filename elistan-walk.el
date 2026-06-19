@@ -170,8 +170,15 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
                                    (nreverse branches))))
       (elistan-walk--confluence survivors env))))
 
+;; NOTE: `and'/`or' use progressive narrowing *internally* (to type each operand
+;; under the assumption that earlier ones held), but that narrowing must NOT leak
+;; into the returned out-env — the out-env carries only mutation (ADR-0010), and
+;; the whole form's condition effect is computed separately by
+;; `elistan-recognise'.  Leaking it would double-apply narrowing at the
+;; enclosing `if'/`cond' and manufacture false dead-branch findings.
+
 (defun elistan-walk--and (args env)
-  "Walk `(and ARGS...)' under ENV with progressive narrowing."
+  "Walk `(and ARGS...)' under ENV with internal progressive narrowing."
   (if (null args)
       (cons '(const t) env)
     (let ((e env) (last 'null) (diverged nil))
@@ -180,24 +187,22 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
           (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r)))
             (setq last at)
             (if (elistan-type-never-p at)
-                (setq e ae diverged t)
+                (setq diverged t)
               (setq e (elistan-refine-true ae (elistan-recognise a ae)))))))
-      (if diverged (cons 'never e)
-        (cons (elistan-type-union 'null last) e)))))
+      (cons (if diverged 'never (elistan-type-union 'null last)) env))))
 
 (defun elistan-walk--or (args env)
-  "Walk `(or ARGS...)' under ENV with progressive narrowing."
+  "Walk `(or ARGS...)' under ENV with internal progressive narrowing."
   (if (null args)
       (cons 'null env)
-    (let ((e env) (types nil) (diverged nil))
-      (dolist (a args)
-        (unless diverged
+    (let ((e env) (types nil))
+      (catch 'diverge
+        (dolist (a args)
           (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r)))
             (push at types)
-            (if (elistan-type-never-p at)
-                (setq e ae diverged t)
-              (setq e (elistan-refine-false ae (elistan-recognise a ae)))))))
-      (cons (apply #'elistan-type-union (nreverse types)) e))))
+            (when (elistan-type-never-p at) (throw 'diverge nil))
+            (setq e (elistan-refine-false ae (elistan-recognise a ae))))))
+      (cons (apply #'elistan-type-union (nreverse types)) env))))
 
 (defun elistan-walk--progn (body env)
   "Walk an implicit-progn BODY under ENV; divergence stops the sequence."

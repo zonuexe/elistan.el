@@ -99,6 +99,20 @@
            (setq n (1- n)))
          acc)))))
 
+(ert-deftest elistan-walk-no-false-dead-branch-from-and ()
+  "An `and' test must not leak narrowing into a later `cond' clause."
+  ;; Regression: clause 1's `(not ca)' narrowed `ca'; if that leaked into the
+  ;; clause-2 environment, `(and ca ...)' would look unreachable (false dead).
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-andleak (a b)
+        (let ((ca a) (cb b))
+          (cond ((and cb (not ca)) 1)
+                ((and ca (not cb)) 2)
+                (t 3)))))
+    'dead-branch)))
+
 (ert-deftest elistan-walk-non-defun ()
   "Non-function-defining top-level forms are out of scope."
   (should-not (elistan-walk-form '(defvar foo nil)))
