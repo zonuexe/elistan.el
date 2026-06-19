@@ -1,6 +1,7 @@
 # PRD — elistan checker front-end (v1 design sketch)
 
-Status: design sketch complete — architecture, front-end, and walker. Ready for implementation planning.
+Status: v1 implemented. Modules `elistan-{type,source,recognise,finding,walk,batch,flymake}.el`
+(+ the `elistan.el` env layer), all green under `make check`. See `docs/adr/0001`–`0013`.
 
 ## Goal
 
@@ -83,6 +84,10 @@ unless it reduces to (1).
   fallback set until then.
 - **`let`/`let*`/`lambda`** scoping is handled mechanically by the threading
   model (typed inits, sequential `let*`, shadowing); not separately grilled.
+  (Lambda *bodies* are not yet descended into — deferred.)
+- **Known limitation:** forms are read, not evaluated, so `declare`-based
+  typespec declarations in the analysed file are not auto-registered. Static
+  extraction of in-file declarations is future work.
 
 ## Walk targets (from AGENTS.md roadmap)
 

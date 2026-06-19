@@ -18,19 +18,40 @@ and refining them across control flow.
 
 ## Current status
 
-Early draft. The flow-sensitivity layer is in place:
+The v1 checker front-end is implemented (design in `docs/adr/`, scope in
+`.scratch/checker-frontend/PRD.md`, glossary in `CONTEXT.md`). It walks a
+function body, threads a type environment through control flow (with
+narrowing and guard-clause / early-exit narrowing), and reports three kinds of
+finding:
 
-- A type environment (`var -> type`): `elistan-env-make` / `-get` / `-set`.
-- `elistan-env-narrow` — apply a guard/assert predicate tested on a variable
-  and obtain the refined environments for each branch.
-- `elistan-env-join` — union variable types at a control-flow confluence.
+- **call-type-mismatch** — an argument provably incompatible with the called
+  function's declared parameter type;
+- **dead-branch** — a condition that is provably always true or always false
+  (e.g. testing `(integerp x)` where `x` is known to be a string);
+- **return-type-mismatch** — a body whose type is incompatible with the defun's
+  declared return type.
 
-For example, narrowing `x : (or string integer)` with `(:guard! string)` gives
-`x : string` on the true branch and `x : integer` on the false branch, and
-joining the branches recovers `(or string integer)`.
+The posture is deliberately quiet: a finding is emitted only when an
+incompatibility is *provable*, so unknown or partial information never produces
+a false positive.
 
-Still to come: the front-end that walks `if` / `cond` / `when` / `and` / `or` /
-`let`, resolves calls, and drives the environment.
+### Usage
+
+Batch / CI:
+
+```sh
+emacs -Q --batch -L . -L ../emacs-typespec \
+  -l elistan-batch --eval '(elistan-batch-run)' FILE.el ...
+```
+
+In the editor — enable the Flymake backend in `emacs-lisp-mode`:
+
+```elisp
+(add-hook 'emacs-lisp-mode-hook #'elistan-flymake-setup)
+```
+
+Function types are resolved from `typespec` declarations, typespec's builtin
+registry, and elistan's own fallback table.
 
 ## Development
 

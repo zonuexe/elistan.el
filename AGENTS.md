@@ -71,37 +71,51 @@ objects. Use the foundation functions above to operate on them.
 
 ## Current state
 
-`elistan.el` — the flow-sensitivity layer only:
+The v1 checker front-end is implemented. Design rationale lives in
+`docs/adr/0001`–`0013` and `.scratch/checker-frontend/PRD.md`; the glossary is
+`CONTEXT.md`. Modules (each with `*-test.el`):
 
-- `elistan-env-make` / `elistan-env-get` / `elistan-env-set` — a type
-  environment (`var -> type`, functional; default `unknown`).
-- `elistan-env-narrow ENV VAR FUNSPEC` — apply a guard tested on VAR; returns
-  `(:true ENV :false ENV)` or `(:assert ENV)`.
-- `elistan-env-join ENV-A ENV-B` — union each variable's type at a confluence.
+- `elistan.el` — the type environment (`elistan-env-make/get/set/narrow/join`;
+  `var -> type`, functional, default `unknown`).
+- `elistan-type.el` — gradual type-op facade over typespec: `consistent-p`
+  (disjointness = the only thing flagged), `meet`/`diff`/`union`, `never-p`,
+  nil-ness predicates. **The gradual-dynamic layer destined for typespec lives
+  here** (see "Coordination" below).
+- `elistan-source.el` — function symbol → funspec: user `typespec` declaration,
+  then `typespec-builtins-lookup`, then `elistan-source--fallback` (an
+  elistan-local coverage table, also destined for typespec).
+- `elistan-recognise.el` — condition → refinement (`var -> (true . false)`):
+  guards, `null`/`not`, `eq`-to-const, comparisons, `memq`, and `and`/`or`/`not`
+  composition; `elistan-refine-true`/`-false` apply it.
+- `elistan-finding.el` — `cl-defstruct elistan-finding` + formatter.
+- `elistan-walk.el` — the analysis core: `elistan-walk-type` threads
+  `(TYPE . ENV)` through special forms with divergence-aware confluence;
+  `elistan-walk-defun` / `elistan-check-forms` are the entry points. Three
+  findings: `call-type-mismatch`, `dead-branch`, `return-type-mismatch`.
+- `elistan-batch.el` — batch/CLI driver (`elistan-batch-run`).
+- `elistan-flymake.el` — Flymake backend (`elistan-flymake-setup`).
 
-`elistan-test.el` covers these. That is the entire implementation so far.
+### Coordination with typespec (implemented locally for now, to migrate)
 
-## Roadmap — the checker front-end (next work)
+Per the project plan, type-level logic destined for typespec is implemented in
+elistan first and funnelled for later extraction:
 
-Drive the environment over code:
+- **Gradual dynamic** — typespec treats `unknown` as a top type only on the
+  expected side; elistan needs it consistent both ways. Handled in
+  `elistan-type.el` (and there is a sibling typespec task to make `unknown` a
+  symmetric dynamic).
+- **noreturn `never`** — `error`/`signal`/`throw`/… should carry return type
+  `never` in the type source; elistan ships a fallback set until typespec does.
+- **Promotions** — typespec's internal `typespec-eval-call--type-compatible-p`
+  and `typespec-eval-call--split-argspecs` should become public; elistan
+  reimplements the small parts it needs (`elistan-source-arglist`).
 
-1. Walk forms: `if`/`cond`/`when`/`unless`/`and`/`or`/`let`/`let*`/`progn`/…
-2. At a condition, identify the tested variable and predicate, resolve the
-   predicate's typespec (`function-get` → `:spec`), and call
-   `elistan-env-narrow` to get the per-branch environments.
-3. Type each branch under its environment (`typespec-eval` /
-   `typespec-eval-call` for expression/return types).
-4. `elistan-env-join` at confluences.
-5. Beyond guard predicates, add narrowing for `eq`/`eql`/`equal` to a const,
-   comparisons → ranges, `memq`/`member`, `null`/`not`, and `and`/`or`/`not`
-   condition composition. Decide per case whether the *type-level* rule belongs
-   in typespec (pure, reusable) and only the recognition/driving here.
+### Known limitation
 
-**Open design question:** how elistan obtains forms to analyze. typespec does
-not parse Lisp; elistan decides its own input (macro-expanded source, an
-already-read AST, etc.). The current narrowing is first-positional-argument
-centric (per the guard spec); relational conditions need their own var
-identification.
+elistan reads forms but does not evaluate them, so `declare`-based typespec
+declarations in the analysed file are not auto-registered. Function types come
+from already-loaded declarations, typespec builtins, and the fallback. Static
+extraction of in-file declarations is future work.
 
 ## Conventions
 
