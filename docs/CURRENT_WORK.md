@@ -107,6 +107,12 @@ and its `setq` soundness fix −1 pre-existing FP) and the typespec `(const nil)
 intersection fix (+1 genuine — a redundant `(eq type 'year)` inside a pcase
 `year` arm in datetime.el). Reproduce:
 
+**Recall** (the other axis, measured separately — `.scratch/recall/`): on a
+labelled in-scope bug corpus, **11/12 caught (92%)** at 0 false positives / 0
+out-of-scope leaks. The measurement surfaced + fixed a reporting bug (a
+literal-argument call mismatch was *detected* but dropped for lack of a source
+position). See `.scratch/recall/REPORT.md`.
+
 ```elisp
 ;; emacs -Q --batch -L . -L ../emacs-typespec -l elistan-batch --eval '(...)'
 (elistan-elsa-register-typed-dbs
