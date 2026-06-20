@@ -36,6 +36,7 @@
 
 (require 'elistan-walk)
 (require 'elistan-elsa)
+(require 'elistan-struct)
 
 (defun elistan-batch--read-buffer ()
   "Read all top-level forms from the current buffer, skipping unreadable input.
@@ -68,6 +69,7 @@ Assumes the analysed buffer is current (for position lookup)."
            ;; `elistan-source-local' (e.g. a project-wide registry) remains
            ;; visible as a fallback.
            (elistan-source-local (append (elistan-elsa-parse-buffer)
+                                         (elistan-struct-parse-buffer)
                                          elistan-source-local))
            ;; Skip findings with no source position: they are macro-introduced
            ;; and not user-actionable (the editor driver skips them likewise).

@@ -34,6 +34,7 @@
 
 (require 'elistan-batch)
 (require 'elistan-elsa)
+(require 'elistan-struct)
 
 (defun elistan-project-registry (files)
   "Collect in-file annotations from all FILES into one NAME -> funspec alist.
@@ -43,7 +44,8 @@ The first annotation seen for a name wins."
       (when (file-readable-p file)
         (with-temp-buffer
           (insert-file-contents file)
-          (dolist (cell (elistan-elsa-parse-buffer))
+          (dolist (cell (append (elistan-elsa-parse-buffer)
+                                (elistan-struct-parse-buffer)))
             (unless (assq (car cell) acc) (push cell acc))))))))
 
 (defun elistan-project-check (files)
