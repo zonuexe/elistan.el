@@ -60,5 +60,29 @@
       (delete-file fa)
       (delete-file fb))))
 
+(ert-deftest elistan-project-cross-file-inheritance ()
+  "An :include parent in another file yields the child's inherited accessors."
+  (let ((fa (make-temp-file
+             "elp-base" nil ".el"
+             "(cl-defstruct animal (name \"\" :type string))\n"))
+        (fb (make-temp-file
+             "elp-sub" nil ".el"
+             "(cl-defstruct (dog (:include animal)) d)\n")))
+    (unwind-protect
+        (progn
+          ;; Per file: fb alone cannot resolve `animal' -> no inherited dog-name.
+          (with-temp-buffer
+            (insert-file-contents fb)
+            (should-not (assq 'dog-name (elistan-struct-parse-buffer))))
+          ;; Project: animal's slots resolve cross-file -> dog-name registered.
+          (let ((infos (elistan-project-struct-infos (list fa fb))))
+            (should (equal
+                     (cdr (assq 'dog-name
+                                (elistan-struct--inherited-accessors-from-infos
+                                 infos)))
+                     '(function ((:class dog)) string)))))
+      (delete-file fa)
+      (delete-file fb))))
+
 (provide 'elistan-project-test)
 ;;; elistan-project-test.el ends here

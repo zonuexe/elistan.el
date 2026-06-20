@@ -72,12 +72,28 @@ The first definition seen for a class wins."
           (dolist (cell (elistan-struct-parse-class-slots))
             (unless (assq (car cell) acc) (push cell acc))))))))
 
+(defun elistan-project-struct-infos (files)
+  "Return the aggregated `cl-defstruct' infos across all FILES."
+  (let ((acc nil))
+    (dolist (file files (nreverse acc))
+      (when (file-readable-p file)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (setq acc (nconc (nreverse (elistan-struct-parse-struct-infos)) acc)))))))
+
 (defun elistan-project-check (files)
   "Check FILES as a project; return an alist of FILE -> list of report strings.
-Annotations from any file are visible to all (cross-file contract checking)."
-  (let ((elistan-source-local (elistan-project-registry files))
-        (typespec-eval-types-class-parents (elistan-project-hierarchy files))
-        (elistan-walk-class-slots (elistan-project-class-slots files)))
+Annotations from any file are visible to all (cross-file contract checking),
+including `:include' chains whose parent is defined in another file."
+  (let* ((typespec-eval-types-class-parents (elistan-project-hierarchy files))
+         (elistan-walk-class-slots (elistan-project-class-slots files))
+         ;; Project-wide inherited accessors resolve `:include' across files
+         ;; (the per-file pass only sees same-buffer parents); merged last so
+         ;; own/earlier definitions win.
+         (elistan-source-local
+          (append (elistan-project-registry files)
+                  (elistan-struct--inherited-accessors-from-infos
+                   (elistan-project-struct-infos files)))))
     (mapcar (lambda (f) (cons f (elistan-batch-check-file f))) files)))
 
 (defun elistan-project-run ()

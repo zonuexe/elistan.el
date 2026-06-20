@@ -246,14 +246,13 @@ dropped).  Returns nil for any other form.  Used to resolve inherited slots."
                        slots)))))
     (_ nil)))
 
-(defun elistan-struct--inherited-accessors (forms)
-  "Return inherited-slot accessor funspecs for `cl-defstruct' `:include' chains.
+(defun elistan-struct--inherited-accessors-from-infos (infos)
+  "Return inherited-slot accessor funspecs for the struct INFOS.
 A child reaches an inherited slot via its own conc-name (`CHILD-PARENTSLOT'),
-so resolve the ancestor chain among FORMS (same scan) and register a reader
-`(function ((:class CHILD)) TYPE)' for each inherited slot not shadowed by a
-nearer definition.  A parent not found among FORMS simply ends the chain."
-  (let ((infos (delq nil (mapcar #'elistan-struct--struct-info forms)))
-        (acc nil))
+so resolve each `:include' ancestor chain within INFOS and register a reader
+`(function ((:class CHILD)) TYPE)' for every inherited slot not shadowed by a
+nearer definition.  A parent absent from INFOS simply ends the chain."
+  (let ((acc nil))
     (dolist (info infos)
       (let* ((name (plist-get info :name))
              (conc (plist-get info :conc))
@@ -278,6 +277,11 @@ nearer definition.  A parent not found among FORMS simply ends the chain."
               (setq p (plist-get pinfo :include)))))))
     (nreverse acc)))
 
+(defun elistan-struct-parse-struct-infos ()
+  "Return the `cl-defstruct' infos of the current buffer (see `--struct-info').
+Exposed so a project driver can resolve `:include' chains across files."
+  (delq nil (mapcar #'elistan-struct--struct-info (elistan-struct--read-forms))))
+
 (defun elistan-struct--read-forms ()
   "Read all top-level forms from the current buffer, tolerating read errors."
   (let ((forms nil))
@@ -295,7 +299,8 @@ accessors for `cl-defstruct' `:include' chains defined in the same buffer."
   (let ((forms (elistan-struct--read-forms)))
     (append (apply #'append (mapcar #'elistan-struct--defstruct forms))
             (apply #'append (mapcar #'elistan-struct--defclass forms))
-            (elistan-struct--inherited-accessors forms))))
+            (elistan-struct--inherited-accessors-from-infos
+             (delq nil (mapcar #'elistan-struct--struct-info forms))))))
 
 (defun elistan-struct-parse-hierarchy ()
   "Scan the current buffer for the class hierarchy.
