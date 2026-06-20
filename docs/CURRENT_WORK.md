@@ -113,6 +113,18 @@ out-of-scope leaks. The measurement surfaced + fixed a reporting bug (a
 literal-argument call mismatch was *detected* but dropped for lack of a source
 position). See `.scratch/recall/REPORT.md`.
 
+**Priority known bug — order-dependent inference** (`.scratch/recall/MACROEXPAND-LEAK.md`):
+`elistan-walk-defun`'s `macroexpand-all` has global side effects (the CL class
+registry grows +24 over 150 files), so a later file's inference is
+order-dependent (a param typed `unknown` in isolation can become non-nil after
+other files are processed). Latent reliability gap for **project mode** /
+multi-file runs (could yield order-dependent FPs). This is why the last recall
+gap — `and`/`or` constant-guard detection — was implemented but **reverted**: it
+surfaced the leak as order-dependent findings. Fix the leak first (isolate
+macroexpand side effects and/or make `(:class)` subtyping fully static), then
+re-land `and`/`or` detection (its logic is sound; `marginalia.el:619` is a
+genuine TP that reproduces in isolation).
+
 ```elisp
 ;; emacs -Q --batch -L . -L ../emacs-typespec -l elistan-batch --eval '(...)'
 (elistan-elsa-register-typed-dbs
