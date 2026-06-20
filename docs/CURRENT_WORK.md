@@ -139,9 +139,11 @@ Some were spawned as task chips in `../emacs-typespec`:
    `cl-defstruct`/`defclass` slot `:type` and translates it to the accessor
    return type (conservative whitelist; nil-default widening keeps zero FP).
    Re-validated on the full elpa sweep (still 19 findings / 0 crashes).
-   *Future precision left here:* element types for `(list-of T)`/`(vector T)`,
-   and chasing a slot whose `:type` is another struct/class (cross-references)
-   — both currently widen to `mixed`/opaque.
+   Parameterised containers (`(list-of T)`, `(vector T N)`, `(array …)`,
+   `(string N)`, `(cons …)`) widen to the bare container type (sound).
+   *Future precision left here:* element types inside those containers, and
+   chasing a slot whose `:type` is another struct/class (cross-references) —
+   the former drops to the container, the latter stays opaque.
 2. ~~**Static in-file `declare` typespecs**~~ — *done* (`elistan-declare.el`).
    Reads the analysed file's own `(typespec #'NAME SPEC)` macro and
    `(declare (typespec-ftype SPEC))` forms statically and binds them into

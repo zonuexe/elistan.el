@@ -132,6 +132,13 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
                  '(integer 0 10)))
   (should (equal (elistan-struct--translate-type '(member a b)) '(member a b)))
   (should (equal (elistan-struct--translate-type '(eql 5)) '(const 5)))
+  ;; Parameterised containers widen to the bare container type.
+  (should (equal (elistan-struct--translate-type '(list-of foo)) 'list))
+  (should (equal (elistan-struct--translate-type '(vector integer 3)) 'vector))
+  (should (equal (elistan-struct--translate-type '(simple-vector 4)) 'vector))
+  (should (equal (elistan-struct--translate-type '(array t)) 'array))
+  (should (equal (elistan-struct--translate-type '(string 10)) 'string))
+  (should (equal (elistan-struct--translate-type '(cons integer string)) 'cons))
   ;; Degenerate forms that would evaluate to `never' fall back to `mixed'.
   (should (equal (elistan-struct--translate-type '(or)) 'mixed))
   (should (equal (elistan-struct--translate-type '(member)) 'mixed))

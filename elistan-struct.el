@@ -98,8 +98,16 @@ false positive."
     ;; Bounded numeric ranges, only when the bounds are well-formed.
     (`(,(or 'integer 'float 'number) . ,bounds)
      (if (elistan-struct--bounds-ok-p bounds) ty 'mixed))
-    ;; Everything else (satisfies, and, cons, function, typed vectors, …) is
-    ;; not reliably modelled: fall back to the dynamic top.
+    ;; Parameterised containers: keep the container type, drop element/size
+    ;; precision.  A `(list-of T)' value is still a list, a `(vector T N)' still
+    ;; a vector, etc. — a sound widening that typespec models as the bare type.
+    (`(list-of . ,_) 'list)
+    (`(,(or 'vector 'simple-vector) . ,_) 'vector)
+    (`(array . ,_) 'array)
+    (`(string . ,_) 'string)
+    (`(cons . ,_) 'cons)
+    ;; Everything else (satisfies, and, function, …) is not reliably modelled:
+    ;; fall back to the dynamic top.
     (_ 'mixed)))
 
 (defun elistan-struct--nilable (ty)
