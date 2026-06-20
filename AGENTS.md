@@ -100,7 +100,8 @@ The v1 checker front-end is implemented. Design rationale lives in
 - `elistan-elsa.el` — reads Elsa-style `;; (NAME :: TYPE)` annotation comments
   as an in-file type source, and (opt-in) loads Elsa's `elsa-typed-*.el` builtin
   type databases for coverage; translates Elsa notation to typespec. Drivers bind
-  in-file annotations to `elistan-source-local`.
+  in-file annotations to `elistan-source-local`.  `elistan-elsa--corrections`
+  overrides known-unsound DB return types (which would cause FP dead branches).
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` definitions as a type
   source: predicate guards (narrowing), constructor/copier/accessor/`:reader`
   types (reader return = the slot's `:type`, conservatively translated; honours

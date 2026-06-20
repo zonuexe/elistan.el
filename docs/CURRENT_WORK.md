@@ -53,7 +53,9 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   annotations + user decls are trusted for **argument checking** (ADR-0014).
 - `elistan-elsa.el` — reads Elsa `;; (NAME :: TYPE)` annotations *and* Elsa's
   `elsa-typed-*.el` builtin DBs (`elistan-elsa-register-typed-dbs`, opt-in,
-  ~327 types). Translates Elsa notation → typespec.
+  ~327 types). Translates Elsa notation → typespec. `elistan-elsa--corrections`
+  overrides known-unsound DB return types (e.g. `help-function-arglist`) that
+  would otherwise cause false-positive dead branches.
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` as a type source
   (predicate guards, constructor/copier/accessor/`:reader` types). Instances are
   typed `(:class NAME)` and the class hierarchy (`:include` / defclass parents)
@@ -100,14 +102,15 @@ positive — this is the project's defining constraint. Key derived rules:
 ## Validation
 
 Swept Elsa + the full elpa set (`~/.emacs.d/elpa`) with Elsa's builtin DBs
-loaded: **743 files → 25 findings, 0 crashes, ~6s**, verified **order-stable**
-(identical forward and reversed). Every finding verified to be genuine dead code
-(zero false positives). The count grew from the v1 baseline of 19 via:
-lambda-body descent (+1, and its `setq` soundness fix −1 pre-existing FP), the
-typespec `(const nil)` intersection fix (+1 — a redundant `(eq type 'year)` in a
-pcase `year` arm in datetime.el), and `and`/`or` constant-guard detection (+5 —
-redundant `(or PARAM fallback)` where PARAM is provably non-nil, etc.).
-Reproduce:
+loaded: **743 files → 23 findings, 0 crashes, ~6s**, verified **order-stable**
+(identical forward and reversed) and every finding individually confirmed a true
+positive. Evolution from the v1 baseline of 19: lambda-body descent (+1, and its
+`setq` soundness fix −1 pre-existing FP); the typespec `(const nil)` fix (+1 — a
+redundant `(eq type 'year)` in a pcase `year` arm in datetime.el); `and`/`or`
+constant-guard detection (+4 genuine — redundant `(or PARAM fallback)` where
+PARAM is provably non-nil); and the Elsa-DB return-type correction (−1 — removed
+`marginalia.el:619`, a latent false positive from Elsa typing
+`help-function-arglist` as never-string, see below). Reproduce:
 
 **Recall** (the other axis — `.scratch/recall/`): on a labelled in-scope bug
 corpus, **12/12 caught (100%)** at 0 false positives / 0 out-of-scope leaks. The

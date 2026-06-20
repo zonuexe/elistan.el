@@ -78,6 +78,17 @@ provably-constant guard wherever it appears. Low priority (uncommon; and the
 
 ## Takeaway
 
-Within its design the checker has **high recall (92%) at zero false positives**.
-The measurement paid for itself by surfacing the literal-argument position drop
-— a real reporting bug that silently lost true positives in annotated projects.
+Within its design the checker has **high recall (100%) at zero false positives**.
+The measurement more than paid for itself — it surfaced three real bugs that the
+synthetic corpus and prior human verification had missed:
+
+1. **Literal-argument position drop** — a detected call mismatch was discarded
+   for lack of a source position (fixed: fall back to the call's function pos).
+2. **Order-dependent inference** — `macroexpand-all` applied load-order-dependent
+   compiler-macros, making analysis non-reproducible (fixed: deterministic
+   `elistan-walk--macroexpand`). See `MACROEXPAND-LEAK.md`.
+3. **A latent false positive in the baseline** — Elsa's DB typed
+   `help-function-arglist` as never returning a string, so
+   `(stringp (help-function-arglist f))` at `marginalia.el:619` was wrongly
+   "dead" (fixed: `elistan-elsa--corrections` overrides unsound DB return
+   types). The "20 findings, zero FP" baseline was really 19 TP + 1 FP.
