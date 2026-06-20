@@ -50,8 +50,10 @@ In the editor — enable the Flymake backend in `emacs-lisp-mode`:
 (add-hook 'emacs-lisp-mode-hook #'elistan-flymake-setup)
 ```
 
-Function types are resolved from `typespec` declarations, typespec's builtin
-registry, and elistan's own fallback table.
+Function types are resolved from in-file
+[Elsa](https://github.com/emacs-elsa/Elsa)-style annotations
+(`;; (name :: (function (string) integer))`), `typespec` declarations,
+typespec's builtin registry, and elistan's own fallback table.
 
 ## Development
 

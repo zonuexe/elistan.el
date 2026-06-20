@@ -74,8 +74,9 @@ unless it reduces to (1).
   `&key`/keyword (`cl-defun`) parameters; analysing non-function top-level forms;
   a Flycheck backend; the batch driver's CLI surface; precise
   `catch`/`condition-case` modelling. **Elsa-contrast expansions (ADR-0013):** a
-  project / cross-file mode; reading Elsa annotations & type databases as a type
-  source (coverage); an optional style-lint layer.
+  project / cross-file mode; reading Elsa builtin *type databases* as a source
+  (Elsa annotation *comments* are done — `elistan-elsa.el`); an optional
+  style-lint layer.
 - **typespec helper promotions (coordination):** make `--type-compatible-p` (the
   gradual-consistency check) and `--split-argspecs` public, per ADR-0003.
 - **noreturn `never` specs (coordination):** noreturn functions (`error`,
@@ -87,6 +88,12 @@ unless it reduces to (1).
   (integer 3 *)))` raises `wrong-type-argument number-or-marker-p *`. elistan's
   type facade guards every typespec call with a conservative fallback so the
   checker cannot crash, but the foundation bug should be fixed upstream.
+- **typespec `(const nil)` / `boolean` intersection bug (coordination):**
+  `meet` of `(const nil)` (or `boolean`) with a type that contains nil yields
+  `never` instead of `(const nil)`/`null`, and `boolean - (const t)` does not
+  simplify to `null`. elistan works around it by narrowing `(eq x nil)` with the
+  `null` type and spelling Elsa `bool` as `(or (const t) null)`; the foundation
+  should handle nil constants in range/boolean intersection.
 - **`let`/`let*`/`lambda`** scoping is handled mechanically by the threading
   model (typed inits, sequential `let*`, shadowing); not separately grilled.
   (Lambda *bodies* are not yet descended into — deferred.)

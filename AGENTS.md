@@ -92,6 +92,9 @@ The v1 checker front-end is implemented. Design rationale lives in
   `(TYPE . ENV)` through special forms with divergence-aware confluence;
   `elistan-walk-defun` / `elistan-check-forms` are the entry points. Three
   findings: `call-type-mismatch`, `dead-branch`, `return-type-mismatch`.
+- `elistan-elsa.el` — reads Elsa-style `;; (NAME :: TYPE)` annotation comments
+  as an in-file type source (translates Elsa notation to typespec); drivers bind
+  the result to `elistan-source-local`.
 - `elistan-batch.el` — batch/CLI driver (`elistan-batch-run`).
 - `elistan-flymake.el` — Flymake backend (`elistan-flymake-setup`).
 
@@ -112,10 +115,12 @@ elistan first and funnelled for later extraction:
 
 ### Known limitation
 
-elistan reads forms but does not evaluate them, so `declare`-based typespec
-declarations in the analysed file are not auto-registered. Function types come
-from already-loaded declarations, typespec builtins, and the fallback. Static
-extraction of in-file declarations is future work.
+elistan reads forms but does not evaluate them. In-file **Elsa-style**
+annotations (`;; (NAME :: TYPE)`) *are* read statically (`elistan-elsa.el`), but
+`declare`-based typespec declarations in the analysed file are still not
+auto-registered. Other function types come from already-loaded declarations,
+typespec builtins, and the fallback. Static extraction of in-file `declare`
+typespecs is future work.
 
 ## Conventions
 
