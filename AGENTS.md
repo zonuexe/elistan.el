@@ -100,8 +100,11 @@ The v1 checker front-end is implemented. Design rationale lives in
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` definitions as a type
   source: predicate guards (narrowing), constructor/copier/accessor/`:reader`
   types (reader return = the slot's `:type`, conservatively translated; honours
-  the `:copier` option name); the class name is an opaque atomic type (full
-  EIEIO subtyping is future work).
+  the `:copier` option name). Instances are typed `(:class NAME)`; the hierarchy
+  (`:include`/defclass parents, via `elistan-struct-parse-hierarchy`) feeds
+  typespec's static `(:class)` subtyping, and inherited `:include` accessors are
+  registered. Remaining EIEIO work: slot-typed `oref`/`oset`, cross-file
+  inheritance.
 - `elistan-declare.el` — reads the analysed file's own typespec declarations:
   the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
   forms. Statically extracted (forms are read, not eval'd) and bound into

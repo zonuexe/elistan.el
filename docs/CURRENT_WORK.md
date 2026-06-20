@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **63 ert tests**, green on source *and* byte-compiled (`make check`).
+- **66 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
@@ -55,8 +55,11 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   `elsa-typed-*.el` builtin DBs (`elistan-elsa-register-typed-dbs`, opt-in,
   ~327 types). Translates Elsa notation → typespec.
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` as a type source
-  (predicate guards, constructor/copier/accessor/`:reader` types; class name =
-  opaque atomic type). Slot `:type` becomes the reader return type
+  (predicate guards, constructor/copier/accessor/`:reader` types). Instances are
+  typed `(:class NAME)` and the class hierarchy (`:include` / defclass parents)
+  is supplied to typespec's static subtyping via
+  `elistan-struct-parse-hierarchy`; inherited `:include` slot accessors are
+  registered (same-buffer). Slot `:type` becomes the reader return type
   (`elistan-struct--translate-type`, conservative: unmodelled → `mixed`,
   parameterised containers → bare container); a nil/absent default widens it
   with `null` so a `cl-defstruct` `:type` that the nil default contradicts
@@ -173,17 +176,21 @@ Status after the `../emacs-typespec` foundation pass:
    exposed and fixed a latent `setq` soundness bug (reassigning a non-lexical
    var now invalidates its narrowing), removing one pre-existing FP
    (logview.el:3227). Sweep: 743 files / 19 findings / 0 crashes.
-4. **Full EIEIO** — *foundation done upstream* (typespec `6e393ba`: static
-   `(:class)` subtyping). Remaining elistan increments, in order:
-   (a) **emit `(:class NAME)`** for instances (predicate guard / constructor /
-   accessor arg+return) and **supply the hierarchy** — read `cl-defstruct`
-   `:include` and `defclass` parents into `typespec-eval-types-class-parents`;
-   (b) **inherited accessors** — register a child's inherited parent slots;
-   (c) **slot-typed `oref`/`oset`** — needs a class→slot-type table.
-   Note (from the design pass): under zero-FP + EIEIO's open world, subtyping's
-   value is *acceptance/narrowing precision*, not rejecting unrelated classes
-   (that would be unsound) — so (b) inherited accessors is the most concretely
-   valuable, purely-additive part.
+4. **Full EIEIO** — foundation + (a)/(b) **done**:
+   - ~~(a) emit `(:class NAME)` + supply hierarchy~~ — done (typespec `6e393ba`
+     static subtyping; elistan emits `(:class)`, drivers bind
+     `typespec-eval-types-class-parents`). Subclass accepted where superclass
+     wanted; `(child-p x)` narrows a superclass var to the subclass.
+   - ~~(b) inherited `:include` accessors~~ — done (same-buffer resolution).
+   - **(c) slot-typed `oref`/`oset`** — *remaining*. `(oref obj slot)` →
+     the slot's `:type`; needs a class→slot-type table (and obj's class). The
+     generic `oref`/`oset` are less common than named accessors (already typed).
+   - **Cross-file inherited accessors** (project mode) — *remaining*: a parent
+     in another file currently ends the chain; would need a project-wide
+     struct-info pass.
+   Design note: under zero-FP + EIEIO's open world, class subtyping adds
+   *acceptance/narrowing precision*, not rejection of unrelated classes (that
+   would be unsound) — so the additive parts (b)/(c) are where the value is.
 5. **Flycheck backend** — postponed by request (needs an optional-dependency
    build decision: flycheck isn't on the `make` load-path).
 6. **Lower-value / thorny deferred** (see PRD "Deferred / future"):
