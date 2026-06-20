@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **47 ert tests**, green on source *and* byte-compiled (`make check`).
+- **52 ert tests**, green on source *and* byte-compiled (`make check`).
 - 11 source modules + 11 `*-test.el`.
 
 ## Build / test / run
@@ -56,7 +56,10 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   ~327 types). Translates Elsa notation → typespec.
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` as a type source
   (predicate guards, constructor/copier/accessor types; class name = opaque
-  atomic type).
+  atomic type). Slot `:type` becomes the accessor return type
+  (`elistan-struct--translate-type`, conservative: unmodelled → `mixed`); a
+  nil/absent default widens it with `null` so a `cl-defstruct` `:type` that the
+  nil default contradicts can't be misread as never-nil.
 - `elistan-recognise.el` — condition → refinement (guards, null/not, eq-const,
   comparisons, memq, and/or/not).
 - `elistan-finding.el` — `cl-defstruct elistan-finding` + formatter.
@@ -126,9 +129,13 @@ Some were spawned as task chips in `../emacs-typespec`:
 
 ## Deferred / next steps (rough feasibility order)
 
-1. **Slot `:type` precision** — `elistan-struct.el` accessors currently return
-   `mixed`; read `cl-defstruct` slot `:type` / `defclass` slot `:type` and
-   translate. Easy, self-contained.
+1. ~~**Slot `:type` precision**~~ — *done.* `elistan-struct.el` reads
+   `cl-defstruct`/`defclass` slot `:type` and translates it to the accessor
+   return type (conservative whitelist; nil-default widening keeps zero FP).
+   Re-validated on the full elpa sweep (still 19 findings / 0 crashes).
+   *Future precision left here:* element types for `(list-of T)`/`(vector T)`,
+   and chasing a slot whose `:type` is another struct/class (cross-references)
+   — both currently widen to `mixed`/opaque.
 2. **Static in-file `declare` typespecs** — forms are read, not eval'd, so
    `(declare (typespec ...))` in the analysed file isn't registered. Parse it
    like the Elsa annotations.
