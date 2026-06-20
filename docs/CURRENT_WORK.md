@@ -29,7 +29,7 @@ The companion `../emacs-typespec` had a coordinated foundation pass this cycle
 - **Quality:** full elpa sweep = **743 files → 23 findings, 0 crashes**, verified
   **order-stable** and every finding a confirmed true positive; in-scope
   **recall 14/14 = 100%** (`.scratch/recall/`). See "Validation".
-- **This cycle (two features):**
+- **This cycle (three changes):**
   1. **Precise (strict) subtype relation** upstream in typespec
      (`typespec-eval-types-type-subtype-strict-p`), used to reduce `(diff SUB
      SUPER)` to `never` soundly — unlocking the **false-branch direction** of
@@ -184,6 +184,18 @@ implemented the sound version** (`typespec-eval-types-type-subtype-strict-p`, se
 direction now works without the over-report. Re-validated: elpa sweep still
 23/0/order-stable; recall includes `dead/else-subtype`.
 
+**Latent FPs fixed this cycle** (neither fired on the corpus — the sweep stayed
+byte-identical at 23 — but both were provable false-positive *classes*, caught
+by reasoning and a targeted probe rather than the corpus):
+1. `(diff (const foo) keyword)` wrongly reduced to `never` (coarse subtype on
+   the value's category). Fixed by the strict relation (coordination #7).
+2. An `&optional` param seeded with its bare declared type looked never-nil, so
+   `(if opt …)` was a false dead branch. Fixed by seeding `(or DECLARED null)`
+   in `elistan-walk--seed-env` (an unpassed optional is nil).
+The lesson (same as the `marginalia.el:619` baseline FP): a zero-FP *corpus* is
+necessary but not sufficient — latent FP classes hide behind code patterns the
+corpus happens not to exercise. Probe new narrowing/seeding logic directly.
+
 Reproduce the full sweep (load Elsa DBs, then check every elpa file):
 
 ```elisp
@@ -224,9 +236,14 @@ Status after the `../emacs-typespec` foundation pass:
    fallback was trimmed to just the `cl-return*` macros (`9c2317a`).
 5. ~~**Promote internals to public API**~~ — *done upstream* (`ba3e471`):
    `typespec-eval-call-split-argspecs` and `typespec-eval-call-type-compatible-p`
-   are now public wrappers. (elistan has *not* adopted them yet — a future DRY
-   pass could replace `elistan-source-arglist` with the public splitter, which
-   would also give `&key` support for free.)
+   are now public wrappers. **Investigated adopting the splitter in
+   `elistan-source-arglist` and decided against it:** the public splitter is
+   *not* behavior-preserving — `typespec-eval-op-argspecs` *evaluates* each arg
+   type and can return `:invalid` (a non-list that the splitter then iterates →
+   crash), whereas elistan's splitter returns raw spec types and tolerates odd
+   forms. Adopting it would change the FP-critical argument-checking path for no
+   functional gain (the walker uses only `:required`/`:optional`/`:rest`, never
+   `:keys`). Not worth the risk; leave `elistan-source-arglist` as is.
 6. ~~**Class types — static subtyping**~~ — *done end-to-end* (typespec
    `6e393ba` + elistan EIEIO work): typespec decides `(:class C)` ⊑ `(:class P)`
    from `typespec-eval-types-class-parents`, and elistan emits `(:class)` and
@@ -304,20 +321,13 @@ Status after the `../emacs-typespec` foundation pass:
 
 ### Remaining work (for the next session)
 
-**Highest value:**
-- ~~**Precise subtype relation in typespec**~~ — *done this cycle* (see "typespec
-  coordination" #7). `typespec-eval-types-type-subtype-strict-p` is the sound
-  relation; `diff` uses it for the `never` reduction; the false-branch direction
-  of guard narrowing now works (recall `dead/else-subtype`), and a latent const
-  unsoundness was fixed. elpa sweep stayed zero-FP (23/0/order-stable).
-  - *Possible follow-up (lower value):* the strict relation is deliberately
-    conservative for structured supers — it widens only the *sub* side to its
-    category, so e.g. `(vector integer) ⊑ (vector number)` (covariant element)
-    or function/tuple subtyping are answered `nil` (sound, just imprecise). The
-    call-checker's `--container-subtype-p`/`--function-subtype-p` already model
-    these for the *acceptance* relation; promoting them into the strict relation
-    would sharpen `diff` further, but guards never produce such supers, so the
-    marginal value is small.
+**The high-value, zero-FP-safe backlog is exhausted.** The precise subtype
+relation (the last "only lever that doesn't trade against zero-FP") landed this
+cycle, along with the `(setf (oref …) …)` slot write and the `&optional`
+nilability fix. What remains is either *unsafe* (would risk false positives,
+against the project's defining constraint), *no-value*, or *perf-only* — each
+annotated below with why. Don't pick one up expecting an easy win; re-read the
+note first.
 
 **Lower value / thorny** (see PRD "Deferred / future"):
 - **Flycheck backend** — postponed by request; needs an optional-dependency
@@ -332,14 +342,19 @@ Status after the `../emacs-typespec` foundation pass:
 - **`&key`/`cl-defun` params** — elistan only argument-checks authoritative
   in-file contracts, which essentially never declare typed `&key` today (typespec
   *does* support `&key` for result typing already). Low marginal value.
+  (Note: `cl-defun` extended arglists — `(x default)`, `&key`, `&aux` — were
+  audited this cycle and degrade *safely* to untracked/`unknown`; no FP/crash,
+  just imprecision.)
 - **precise `catch`/`condition-case`** — basic `throw` divergence already works
   via the `never` fallback; precise tag-matching is low value.
 - **changed-only incremental** — perf only; the checker is ~6s for all of elpa.
-- **adopt typespec's public splitter** (`typespec-eval-call-split-argspecs`) in
-  `elistan-source-arglist` — DRY + free `&key` handling (coordination #5).
-- ~~**`(setf (oref …) …)` place form**~~ — *done this cycle* (Deferred #4(e)):
-  the walker `(require)`s eieio so setf-based slot writes expand to `eieio-oset`
-  and are checked.
+- **adopt typespec's public splitter** — *investigated and rejected this cycle*;
+  not behavior-preserving and no functional gain (see coordination #5 for the
+  full rationale).
+- **strict relation: structured supers** — *low value*; the strict subtype
+  relation answers `nil` for container/function/tuple *supers* (covariant
+  elements), which is sound but imprecise. Guards never produce such supers, so
+  sharpening `diff` here would not fire in practice (see coordination #7).
 
 **Out of scope:** optional style-lint layer (ADR-0013; Elsa/checkdoc/
 package-lint cover it).
