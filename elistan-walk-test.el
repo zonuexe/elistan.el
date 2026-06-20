@@ -159,6 +159,23 @@ when the tested value is provably disjoint from the guard type."
                (elistan-walk-defun '(defun et-seq2 (x) (if (sequencep x) 1 2)))
                'dead-branch)))
 
+(ert-deftest elistan-walk-optional-param-nilable ()
+  "An `&optional' param is nilable in the body: a not-passed arg is nil, so its
+in-body type is `(or DECLARED null)'.  A nil-test on it is therefore never a
+dead branch, but a guard disjoint from both the declared type and nil still is."
+  ;; `(if x …)' on `(&optional integer)' must NOT flag a branch dead: x may be
+  ;; nil (the arg was not passed).  Seeding the bare `integer' was a false
+  ;; positive (it made x look never-nil).
+  (elistan-walk-test--declare 'et-opt '(function (&optional integer) integer))
+  (should-not (elistan-walk-test--of
+               (elistan-walk-defun '(defun et-opt (&optional x) (if x 1 2)))
+               'dead-branch))
+  ;; A guard provably disjoint from BOTH integer and nil is still a dead branch.
+  (elistan-walk-test--declare 'et-opt2 '(function (&optional integer) integer))
+  (should (elistan-walk-test--of
+           (elistan-walk-defun '(defun et-opt2 (&optional x) (if (stringp x) 1 2)))
+           'dead-branch)))
+
 (ert-deftest elistan-walk-and-or-dead-guard ()
   "A provably-constant guard makes the rest of an `and'/`or' unreachable."
   (elistan-walk-test--declare 'et-aa '(function (string) integer))

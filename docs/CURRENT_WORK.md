@@ -24,7 +24,7 @@ The companion `../emacs-typespec` had a coordinated foundation pass this cycle
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.) `../emacs-typespec`
   is likewise clean/committed.
-- **74 ert tests**, green on source *and* byte-compiled (`make check`).
+- **75 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 - **Quality:** full elpa sweep = **743 files → 23 findings, 0 crashes**, verified
   **order-stable** and every finding a confirmed true positive; in-scope
@@ -40,9 +40,14 @@ The companion `../emacs-typespec` had a coordinated foundation pass this cycle
      eieio, so the idiomatic setf-based slot write expands to `eieio-oset`
      (instead of `setf`'s generic gv fallback mangling the place when eieio is
      unloaded) and is checked like `oset`. Closed a real recall gap.
-  Both validated: elpa sweep **byte-identical at 23/0/order-stable** (both levers
-  are additive and don't fire on the corpus's contract-free / type-consistent
-  code), recall +2 (`dead/else-subtype`, `slot/setf-oref`).
+  3. **Latent `&optional` nilability FP fixed** — `elistan-walk--seed-env` seeded
+     an `&optional` param with its bare declared type, ignoring that a not-passed
+     optional is `nil`; `(if opt …)` then looked never-nil → a false dead branch.
+     Now seeded as `(or DECLARED null)` (strictly widening — can only *remove*
+     findings). A guard disjoint from both the type and nil still fires (TP kept).
+  All validated: elpa sweep **byte-identical at 23/0/order-stable** (the levers
+  are additive / the FP was latent, so none fire on the corpus), recall +2
+  (`dead/else-subtype`, `slot/setf-oref`).
 
 ## Build / test / run
 

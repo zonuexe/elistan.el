@@ -615,8 +615,15 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
        (t (pcase state
             ('required (setq env (elistan-walk--bind env p (or (nth ri req) 'unknown)))
                        (setq ri (1+ ri)))
-            ('optional (setq env (elistan-walk--bind env p (or (nth oi opt) 'unknown)))
-                       (setq oi (1+ oi)))
+            ('optional
+             ;; A not-passed `&optional' arg is nil, so its in-body type is the
+             ;; declared type *or* nil.  Seeding the bare declared type would
+             ;; wrongly make the param look never-nil, marking `(if opt …)' /
+             ;; `(when opt …)' guards as dead branches (a false positive).
+             (let ((ty (nth oi opt)))
+               (setq env (elistan-walk--bind
+                          env p (if ty (elistan-type-union ty 'null) 'unknown))))
+             (setq oi (1+ oi)))
             ('rest (setq env (elistan-walk--bind
                               env p (if rest (list 'list rest) 'list))))))))
     env))
