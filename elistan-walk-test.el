@@ -126,6 +126,34 @@ A slot typed integer makes `(stringp …)' on it a provably dead branch."
                      (let ((n (slot-value obj 'missing))) (if (stringp n) 1 2))))
                  'dead-branch))))
 
+(ert-deftest elistan-walk-and-or-dead-guard ()
+  "A provably-constant guard makes the rest of an `and'/`or' unreachable."
+  (elistan-walk-test--declare 'et-aa '(function (string) integer))
+  (elistan-walk-test--declare 'et-ab '(function (string) integer))
+  (elistan-walk-test--declare 'et-ac '(function (string) integer))
+  (elistan-walk-test--declare 'et-ad '(function (mixed) integer))
+  ;; `(and (integerp x) x)' with x : string -> `(integerp x)' always nil.
+  (let* ((fs (elistan-walk-defun '(defun et-aa (x) (and (integerp x) x))))
+         (f (elistan-walk-test--of fs 'dead-branch)))
+    (should f)
+    (should (eq (plist-get (elistan-finding-data f) :verdict) 'always-false))
+    (should (eq (plist-get (elistan-finding-data f) :dead-branch) 'rest))
+    (should (eq (plist-get (elistan-finding-data f) :construct) 'and)))
+  ;; `(or (stringp x) x)' with x : string -> `(stringp x)' always non-nil.
+  (let* ((fs (elistan-walk-defun '(defun et-ab (x) (or (stringp x) x))))
+         (f (elistan-walk-test--of fs 'dead-branch)))
+    (should f)
+    (should (eq (plist-get (elistan-finding-data f) :verdict) 'always-true))
+    (should (eq (plist-get (elistan-finding-data f) :construct) 'or)))
+  ;; A guard in the LAST position has nothing after it -> no finding.
+  (should-not (elistan-walk-test--of
+               (elistan-walk-defun '(defun et-ac (x) (and x (integerp x))))
+               'dead-branch))
+  ;; A non-constant guard (x : mixed) -> no finding (no false positive).
+  (should-not (elistan-walk-test--of
+               (elistan-walk-defun '(defun et-ad (x) (and (integerp x) x)))
+               'dead-branch)))
+
 (ert-deftest elistan-walk-oset-slot-check ()
   "`(oset obj slot val)' flags a value provably incompatible with the slot type."
   (elistan-walk-test--declare 'et-os '(function ((:class widget)) integer))

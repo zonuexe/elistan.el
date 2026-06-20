@@ -273,8 +273,8 @@ findings accumulate in `elistan-walk--findings'."
          (pos (elistan-walk--pos test))
          ;; A branch is dead when narrowing makes a tested variable `never'
          ;; (e.g. testing `(integerp x)' where x : string).
-         (true-never (cl-some (lambda (c) (elistan-type-never-p (cadr c))) refn))
-         (false-never (cl-some (lambda (c) (elistan-type-never-p (cddr c))) refn))
+         (true-never (elistan-walk--guard-true-never-p refn))
+         (false-never (elistan-walk--guard-false-never-p refn))
          (verdict (cond
                    ((or (elistan-type-never-nil-p tt) false-never) 'always-true)
                    ((or (elistan-type-always-nil-p tt)
@@ -307,8 +307,7 @@ findings accumulate in `elistan-walk--findings'."
                (tr (elistan-walk-type test e)) (tt (car tr)) (te (cdr tr))
                (refn (elistan-recognise test te))
                (true-env (elistan-refine-true te refn))
-               (true-never (cl-some (lambda (c) (elistan-type-never-p (cadr c)))
-                                    refn)))
+               (true-never (elistan-walk--guard-true-never-p refn)))
           (if true-never
               (elistan-walk--emit 'dead-branch (elistan-walk--pos test)
                                   (list :test test :verdict 'always-false
@@ -342,35 +341,63 @@ wrongly narrow it.  Narrowing on non-assigned variables is left behind."
                  out v (elistan-type-union (elistan-env-get env v)
                                            (elistan-env-get threaded v)))))))
 
+(defun elistan-walk--guard-true-never-p (refn)
+  "Non-nil if REFN makes the true branch impossible (a provably-false guard)."
+  (cl-some (lambda (c) (elistan-type-never-p (cadr c))) refn))
+
+(defun elistan-walk--guard-false-never-p (refn)
+  "Non-nil if REFN makes the false branch impossible (a provably-true guard)."
+  (cl-some (lambda (c) (elistan-type-never-p (cddr c))) refn))
+
 (defun elistan-walk--and (args env)
   "Walk `(and ARGS...)' under ENV with internal progressive narrowing.
+A non-final operand whose narrowing makes its true branch impossible is always
+nil, so the rest of the `and' is unreachable — reported as a `dead-branch'.
 The out-env keeps `setq' mutations from the operands but not the speculative
 narrowing (which is the separate recogniser's job)."
   (if (null args)
       (cons '(const t) env)
-    (let ((e env) (last 'null) (diverged nil))
-      (dolist (a args)
-        (unless diverged
-          (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r)))
-            (setq last at)
-            (if (elistan-type-never-p at)
-                (setq e ae diverged t)
-              (setq e (elistan-refine-true ae (elistan-recognise a ae)))))))
-      (cons (if diverged 'never (elistan-type-union 'null last))
-            (elistan-walk--carry-mutations env e args)))))
+    (let ((e env) (rty nil) (last 'null) (idx 0) (n (length args)))
+      (catch 'stop
+        (dolist (a args)
+          (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r))
+                 (refn (elistan-recognise a ae)))
+            (setq last at e ae)
+            (cond
+             ((elistan-type-never-p at) (setq rty 'never) (throw 'stop nil))
+             ((and (< idx (1- n)) (elistan-walk--guard-true-never-p refn))
+              (elistan-walk--emit 'dead-branch (elistan-walk--pos a)
+                                  (list :test a :verdict 'always-false
+                                        :dead-branch 'rest :construct 'and))
+              (setq rty 'null) (throw 'stop nil))
+             (t (setq e (elistan-refine-true ae refn)))))
+          (setq idx (1+ idx)))
+        (setq rty (elistan-type-union 'null last)))
+      (cons rty (elistan-walk--carry-mutations env e args)))))
 
 (defun elistan-walk--or (args env)
   "Walk `(or ARGS...)' under ENV with internal progressive narrowing.
+A non-final operand whose narrowing makes its false branch impossible is always
+non-nil, so the rest of the `or' is unreachable — reported as a `dead-branch'.
 The out-env keeps `setq' mutations but not the speculative narrowing."
   (if (null args)
       (cons 'null env)
-    (let ((e env) (types nil))
-      (catch 'diverge
+    (let ((e env) (types nil) (idx 0) (n (length args)))
+      (catch 'stop
         (dolist (a args)
-          (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r)))
+          (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r))
+                 (refn (elistan-recognise a ae)))
             (push at types)
-            (when (elistan-type-never-p at) (setq e ae) (throw 'diverge nil))
-            (setq e (elistan-refine-false ae (elistan-recognise a ae))))))
+            (setq e ae)
+            (cond
+             ((elistan-type-never-p at) (throw 'stop nil))
+             ((and (< idx (1- n)) (elistan-walk--guard-false-never-p refn))
+              (elistan-walk--emit 'dead-branch (elistan-walk--pos a)
+                                  (list :test a :verdict 'always-true
+                                        :dead-branch 'rest :construct 'or))
+              (throw 'stop nil))
+             (t (setq e (elistan-refine-false ae refn)))))
+          (setq idx (1+ idx))))
       (cons (apply #'elistan-type-union (nreverse types))
             (elistan-walk--carry-mutations env e args)))))
 

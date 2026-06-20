@@ -57,14 +57,15 @@ CATEGORY is a stable symbol: `call-type-mismatch', `dead-branch',
                (elistan-finding--type (plist-get data :actual))
                (elistan-finding--type (plist-get data :expected))))
       ('dead-branch
-       (pcase (plist-get data :verdict)
-         ('always-true
-          (format "condition is always non-nil; the `%s' branch is unreachable"
-                  (plist-get data :dead-branch)))
-         ('always-false
-          (format "condition is always nil; the `%s' branch is unreachable"
-                  (plist-get data :dead-branch)))
-         (_ "condition has a constant truth value")))
+       (let ((where (if (eq (plist-get data :dead-branch) 'rest)
+                        (format "the rest of the `%s' is unreachable"
+                                (plist-get data :construct))
+                      (format "the `%s' branch is unreachable"
+                              (plist-get data :dead-branch)))))
+         (pcase (plist-get data :verdict)
+           ('always-true (concat "condition is always non-nil; " where))
+           ('always-false (concat "condition is always nil; " where))
+           (_ "condition has a constant truth value"))))
       ('return-type-mismatch
        (format "return type %s is incompatible with declared %s"
                (elistan-finding--type (plist-get data :actual))
