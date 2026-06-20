@@ -82,6 +82,11 @@ unless it reduces to (1).
   `signal`, `throw`, `user-error`, `cl-return*`, …) need return type `never` in
   the type source for data-driven divergence (ADR-0010). v1 uses a built-in
   fallback set until then.
+- **typespec range-intersection bug (coordination):** intersecting two
+  half-bounded integer ranges errors — `(typespec-eval-op-and '((integer * 5)
+  (integer 3 *)))` raises `wrong-type-argument number-or-marker-p *`. elistan's
+  type facade guards every typespec call with a conservative fallback so the
+  checker cannot crash, but the foundation bug should be fixed upstream.
 - **`let`/`let*`/`lambda`** scoping is handled mechanically by the threading
   model (typed inits, sequential `let*`, shadowing); not separately grilled.
   (Lambda *bodies* are not yet descended into — deferred.)
