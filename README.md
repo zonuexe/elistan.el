@@ -53,7 +53,15 @@ In the editor — enable the Flymake backend in `emacs-lisp-mode`:
 Function types are resolved from in-file
 [Elsa](https://github.com/emacs-elsa/Elsa)-style annotations
 (`;; (name :: (function (string) integer))`), `typespec` declarations,
-typespec's builtin registry, and elistan's own fallback table.
+typespec's builtin registry, and elistan's own fallback table.  Elsa's builtin
+type databases can be loaded for extra coverage via
+`elistan-elsa-register-typed-dbs`.
+
+Argument type mismatches are reported only against author-written contracts
+(annotations and `typespec` declarations); builtin databases inform narrowing
+and result typing but never flag a call, because Emacs's builtins are leniently
+polymorphic (e.g. `(message nil)` is valid).  Dead-branch and return-type
+findings apply everywhere.
 
 ## Development
 

@@ -72,7 +72,7 @@ objects. Use the foundation functions above to operate on them.
 ## Current state
 
 The v1 checker front-end is implemented. Design rationale lives in
-`docs/adr/0001`–`0013` and `.scratch/checker-frontend/PRD.md`; the glossary is
+`docs/adr/0001`–`0014` and `.scratch/checker-frontend/PRD.md`; the glossary is
 `CONTEXT.md`. Modules (each with `*-test.el`):
 
 - `elistan.el` — the type environment (`elistan-env-make/get/set/narrow/join`;
@@ -93,8 +93,9 @@ The v1 checker front-end is implemented. Design rationale lives in
   `elistan-walk-defun` / `elistan-check-forms` are the entry points. Three
   findings: `call-type-mismatch`, `dead-branch`, `return-type-mismatch`.
 - `elistan-elsa.el` — reads Elsa-style `;; (NAME :: TYPE)` annotation comments
-  as an in-file type source (translates Elsa notation to typespec); drivers bind
-  the result to `elistan-source-local`.
+  as an in-file type source, and (opt-in) loads Elsa's `elsa-typed-*.el` builtin
+  type databases for coverage; translates Elsa notation to typespec. Drivers bind
+  in-file annotations to `elistan-source-local`.
 - `elistan-batch.el` — batch/CLI driver (`elistan-batch-run`).
 - `elistan-flymake.el` — Flymake backend (`elistan-flymake-setup`).
 

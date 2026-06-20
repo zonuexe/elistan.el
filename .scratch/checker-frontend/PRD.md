@@ -74,9 +74,15 @@ unless it reduces to (1).
   `&key`/keyword (`cl-defun`) parameters; analysing non-function top-level forms;
   a Flycheck backend; the batch driver's CLI surface; precise
   `catch`/`condition-case` modelling. **Elsa-contrast expansions (ADR-0013):** a
-  project / cross-file mode; reading Elsa builtin *type databases* as a source
-  (Elsa annotation *comments* are done — `elistan-elsa.el`); an optional
-  style-lint layer.
+  project / cross-file mode; an optional style-lint layer. (Elsa annotation
+  *comments* and builtin *type databases* are both done — `elistan-elsa.el`.)
+- **Call findings only against author-written contracts (ADR-0014):** builtin
+  type databases drive narrowing and result typing but never flag a call, since
+  Emacs builtins are leniently polymorphic and DB types are incomplete.
+- **Hardened on real codebases:** swept Elsa + elpa packages, fixing crash and
+  false-positive classes (and/or & condition-case mutation carry, nil-binding
+  accumulators, lexical-only tracking of `setq`, macroexpand failure). Posture
+  holds: remaining findings on elpa are genuine dead code.
 - **typespec helper promotions (coordination):** make `--type-compatible-p` (the
   gradual-consistency check) and `--split-argspecs` public, per ADR-0003.
 - **noreturn `never` specs (coordination):** noreturn functions (`error`,
