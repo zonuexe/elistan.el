@@ -191,6 +191,13 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
      (elistan-walk--oref obj slot env))
     (`(,(or 'slot-value 'eieio-oref) ,obj (quote ,(and slot (pred symbolp))))
      (elistan-walk--oref obj slot env))
+    ;; EIEIO slot write: a defclass slot `:type' is enforced at runtime, so a
+    ;; provably incompatible assigned value is a real error.  `oset' is a macro
+    ;; (unquoted slot); `eieio-oset' the function (quoted slot).
+    (`(oset ,obj ,(and slot (pred symbolp)) ,val)
+     (elistan-walk--oset obj slot val env))
+    (`(eieio-oset ,obj (quote ,(and slot (pred symbolp))) ,val)
+     (elistan-walk--oset obj slot val env))
     (`(,(pred symbolp) . ,_) (elistan-walk--call form env))
     (_ (cons 'unknown env))))
 
@@ -219,6 +226,27 @@ declared type; otherwise `unknown'."
          (class (and (eq (car-safe objty) :class) (cadr objty)))
          (ty (and class (symbolp slot) (elistan-walk--slot-type class slot))))
     (cons (or ty 'unknown) (cdr r))))
+
+(defun elistan-walk--oset (obj slot val env)
+  "Walk an `oset' of VAL into literal SLOT on OBJ; return `(TYPE . ENV)'.
+When OBJ is a `(:class C)' whose SLOT has a known type that VAL provably
+violates, emit a `slot-type-mismatch' (EIEIO enforces defclass slot `:type').
+The result is VAL's type (`oset' returns the assigned value)."
+  (let* ((ro (elistan-walk-type obj env))
+         (objty (car ro))
+         (rv (elistan-walk-type val (cdr ro)))
+         (valty (car rv))
+         (class (and (eq (car-safe objty) :class) (cadr objty)))
+         (slot-type (and class (symbolp slot)
+                         (elistan-walk--slot-type class slot))))
+    (when (and slot-type
+               (not (elistan-type-consistent-p valty slot-type)))
+      (elistan-walk--emit
+       'slot-type-mismatch
+       (or (elistan-walk--pos val) (elistan-walk--pos slot))
+       (list :slot (elistan-walk--bare slot) :class class
+             :expected slot-type :actual valty)))
+    (cons valty (cdr rv))))
 
 (defun elistan-walk--lambda (arglist body)
   "Analyse a lambda's BODY for findings; return nil.

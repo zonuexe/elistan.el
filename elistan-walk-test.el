@@ -126,6 +126,28 @@ A slot typed integer makes `(stringp …)' on it a provably dead branch."
                      (let ((n (slot-value obj 'missing))) (if (stringp n) 1 2))))
                  'dead-branch))))
 
+(ert-deftest elistan-walk-oset-slot-check ()
+  "`(oset obj slot val)' flags a value provably incompatible with the slot type."
+  (elistan-walk-test--declare 'et-os '(function ((:class widget)) integer))
+  (let ((elistan-walk-class-slots '((widget (width . integer)))))
+    ;; assigning a string to an integer slot -> slot-type-mismatch
+    (let ((f (elistan-walk-test--of
+              (elistan-walk-defun
+               '(defun et-os (obj) (oset obj width "wide") 0))
+              'slot-type-mismatch)))
+      (should f)
+      (should (equal (plist-get (elistan-finding-data f) :slot) 'width))
+      (should (equal (plist-get (elistan-finding-data f) :expected) 'integer))
+      (should (equal (plist-get (elistan-finding-data f) :actual) 'string)))
+    ;; a compatible value -> no finding
+    (should-not (elistan-walk-test--of
+                 (elistan-walk-defun '(defun et-os (obj) (oset obj width 5) 0))
+                 'slot-type-mismatch))
+    ;; an unknown slot -> no finding (no false positive)
+    (should-not (elistan-walk-test--of
+                 (elistan-walk-defun '(defun et-os (obj) (oset obj other "x") 0))
+                 'slot-type-mismatch))))
+
 (ert-deftest elistan-walk-return-mismatch ()
   "A body type incompatible with the declared return is reported (category 3)."
   (elistan-walk-test--declare 'et-h '(function (string) integer))

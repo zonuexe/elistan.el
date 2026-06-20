@@ -33,10 +33,10 @@
 (cl-defstruct (elistan-finding (:constructor elistan-finding-create)
                                (:copier nil))
   "A single issue reported by the analysis core.
-CATEGORY is a stable symbol: `call-type-mismatch', `dead-branch', or
-`return-type-mismatch'.  POS is a source position (character offset) or nil.
-SEVERITY is `:error', `:warning' (default) or `:note'.  DATA is a
-category-specific plist."
+CATEGORY is a stable symbol: `call-type-mismatch', `dead-branch',
+`return-type-mismatch', or `slot-type-mismatch'.  POS is a source position
+\(character offset) or nil.  SEVERITY is `:error', `:warning' (default) or
+`:note'.  DATA is a category-specific plist."
   category
   pos
   (severity :warning)
@@ -69,6 +69,12 @@ category-specific plist."
        (format "return type %s is incompatible with declared %s"
                (elistan-finding--type (plist-get data :actual))
                (elistan-finding--type (plist-get data :declared))))
+      ('slot-type-mismatch
+       (format "slot `%s' of `%s' has type %s, assigned value has type %s"
+               (plist-get data :slot)
+               (plist-get data :class)
+               (elistan-finding--type (plist-get data :expected))
+               (elistan-finding--type (plist-get data :actual))))
       (other (format "%s" other)))))
 
 (provide 'elistan-finding)
