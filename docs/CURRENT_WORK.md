@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **72 ert tests**, green on source *and* byte-compiled (`make check`).
+- **74 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
