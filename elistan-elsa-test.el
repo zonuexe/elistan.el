@@ -51,5 +51,17 @@
       ;; non-function annotation is ignored.
       (should-not (assq 'a-var a)))))
 
+(ert-deftest elistan-elsa-typed-db ()
+  "Elsa type-database `put' forms are parsed and translated."
+  (with-temp-buffer
+    (insert "(put 'stringp 'elsa-type (elsa-make-type (function (mixed) (is string))))\n"
+            "(put 'my-len 'elsa-type (elsa-make-type (function ((or sequence nil)) int)))\n"
+            "(require 'foo)\n")
+    (let ((db (elistan-elsa-parse-typed-db)))
+      (should (equal (cdr (assq 'stringp db))
+                     '(function (mixed) (:guard! string))))
+      (should (equal (cdr (assq 'my-len db))
+                     '(function ((or sequence null)) integer))))))
+
 (provide 'elistan-elsa-test)
 ;;; elistan-elsa-test.el ends here

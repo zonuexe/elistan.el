@@ -81,5 +81,35 @@ Return an alist of NAME -> typespec funspec, for function-typed annotations."
         (forward-line 1)))
     (nreverse result)))
 
+(defun elistan-elsa-parse-typed-db ()
+  "Parse Elsa type-database `put' forms in the current buffer.
+Recognises `(put \\='SYM \\='elsa-type (elsa-make-type TYPE))' and returns an
+alist of SYM -> typespec funspec, for function types only."
+  (let ((result nil))
+    (save-excursion
+      (goto-char (point-min))
+      (condition-case nil
+          (while t
+            (let ((form (read (current-buffer))))
+              (pcase form
+                (`(put (quote ,sym) (quote elsa-type) (elsa-make-type ,ty))
+                 (let ((spec (elistan-elsa--translate-type ty)))
+                   (when (and (symbolp sym) (eq (car-safe spec) 'function))
+                     (push (cons sym spec) result)))))))
+        ((end-of-file invalid-read-syntax) nil)))
+    (nreverse result)))
+
+(defun elistan-elsa-register-typed-dbs (files)
+  "Load Elsa type-database FILES into `elistan-source-builtins'.
+Return the number of function types registered."
+  (let ((acc nil))
+    (dolist (file files)
+      (when (file-readable-p file)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (setq acc (append acc (elistan-elsa-parse-typed-db))))))
+    (setq elistan-source-builtins acc)
+    (length acc)))
+
 (provide 'elistan-elsa)
 ;;; elistan-elsa.el ends here

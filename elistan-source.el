@@ -83,14 +83,22 @@ Highest-priority type source: a driver binds this to in-file declarations or
 annotations (e.g. Elsa `;; (NAME :: TYPE)' comments) before checking, so a
 function's own file can supply its type.")
 
+(defvar elistan-source-builtins nil
+  "Extra builtin NAME -> funspec alist, loaded once and shared.
+Populated e.g. from Elsa's type databases via
+`elistan-elsa-register-typed-dbs'.  Consulted after typespec's builtin registry
+and before elistan's own fallback.")
+
 (defun elistan-source-function-spec (sym)
   "Return the funspec for function SYM, or nil if unknown.
 Order: an in-file annotation (`elistan-source-local'), then a user `typespec'
-declaration, then typespec's builtin registry, then elistan's fallback."
+declaration, then typespec's builtin registry, then a loaded builtin database
+\(`elistan-source-builtins'), then elistan's fallback."
   (and (symbolp sym)
        (or (cdr (assq sym elistan-source-local))
            (plist-get (function-get sym 'typespec) :spec)
            (typespec-builtins-lookup sym)
+           (cdr (assq sym elistan-source-builtins))
            (cdr (assq sym elistan-source--fallback)))))
 
 (defun elistan-source-return (funspec)
