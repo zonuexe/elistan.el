@@ -134,13 +134,19 @@ Status after the `../emacs-typespec` foundation pass:
    membership, and finite `boolean` differences reduce. elistan's
    `(or (const t) null)` spelling for `boolean` was reverted to plain `boolean`
    (`4ac7dd1`).
-4. **noreturn `never`** — `error`/`signal`/`throw`/… should carry return type
-   `never` (drives divergence). elistan still ships a fallback set.
-5. **Promote internals to public API** — `typespec-eval-call--type-compatible-p`
-   and `typespec-eval-call--split-argspecs`.
-6. **Class types** — typespec has no *static* class subtyping (`child-of-class-p`
-   needs live EIEIO classes). Needed for full EIEIO (the headline foundation
-   item still open).
+4. ~~**noreturn `never`**~~ — *done upstream* (`ba3e471`): the noreturn builtins
+   are registered in `typespec-builtins` with a `never' return. elistan's
+   fallback was trimmed to just the `cl-return*` macros (`bb…`/source commit).
+5. ~~**Promote internals to public API**~~ — *done upstream* (`ba3e471`):
+   `typespec-eval-call-split-argspecs` and `typespec-eval-call-type-compatible-p`
+   are now public wrappers. (elistan has not yet adopted them — see EIEIO step 2
+   / a future DRY pass for `elistan-source-arglist`.)
+6. ~~**Class types — static subtyping (foundation)**~~ — *done upstream*
+   (`6e393ba`): `(:class C)` ⊑ `(:class P)` is decided statically from a
+   supplied `typespec-eval-types-class-parents` hierarchy; meet narrows to the
+   subclass; unrelated classes stay non-disjoint (zero-FP, sound under EIEIO's
+   open world). **elistan does not emit `(:class)` yet** — wiring it up is the
+   next EIEIO increment (see below).
 
 ## Deferred / next steps (rough feasibility order)
 
@@ -167,8 +173,17 @@ Status after the `../emacs-typespec` foundation pass:
    exposed and fixed a latent `setq` soundness bug (reassigning a non-lexical
    var now invalidates its narrowing), removing one pre-existing FP
    (logview.el:3227). Sweep: 743 files / 19 findings / 0 crashes.
-4. **Full EIEIO** — inheritance subtyping + slot-typed `oref`/`oset`. Blocked on
-   typespec class types (item 6 above) — coordinate.
+4. **Full EIEIO** — *foundation done upstream* (typespec `6e393ba`: static
+   `(:class)` subtyping). Remaining elistan increments, in order:
+   (a) **emit `(:class NAME)`** for instances (predicate guard / constructor /
+   accessor arg+return) and **supply the hierarchy** — read `cl-defstruct`
+   `:include` and `defclass` parents into `typespec-eval-types-class-parents`;
+   (b) **inherited accessors** — register a child's inherited parent slots;
+   (c) **slot-typed `oref`/`oset`** — needs a class→slot-type table.
+   Note (from the design pass): under zero-FP + EIEIO's open world, subtyping's
+   value is *acceptance/narrowing precision*, not rejecting unrelated classes
+   (that would be unsound) — so (b) inherited accessors is the most concretely
+   valuable, purely-additive part.
 5. **Flycheck backend** — postponed by request (needs an optional-dependency
    build decision: flycheck isn't on the `make` load-path).
 6. **Lower-value / thorny deferred** (see PRD "Deferred / future"):
