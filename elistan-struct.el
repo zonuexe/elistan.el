@@ -136,15 +136,17 @@ excludes both TY and nil, so genuine mismatches still surface."
             (ctor (let ((c (elistan-struct--option options :constructor)))
                     (if (and c (not (eq c t))) c
                       (intern (format "make-%s" name)))))
+            (copier (let ((c (elistan-struct--option options :copier)))
+                      (if (and c (not (eq c t))) c
+                        (intern (format "copy-%s" name)))))
             (acc nil))
        (when (and name (symbolp name))
          (when (and pred (symbolp pred))
            (push (cons pred (list 'function '(t) (list :guard! name))) acc))
          (when (and ctor (symbolp ctor))
            (push (cons ctor (list 'function '(&rest mixed) name)) acc))
-         (push (cons (intern (format "copy-%s" name))
-                     (list 'function (list name) name))
-               acc)
+         (when (and copier (symbolp copier))
+           (push (cons copier (list 'function (list name) name)) acc))
          (dolist (slot slots)
            ;; `slots' may lead with a docstring (a string), which `--slot-name'
            ;; maps to nil; the guard skips it (and anything non-symbol-named).

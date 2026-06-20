@@ -37,12 +37,15 @@
       (should (equal (cdr (assq 'copy-foo db)) '(function (foo) foo))))))
 
 (ert-deftest elistan-struct-defstruct-options ()
-  "A defstruct with a custom :conc-name is honoured."
+  "A defstruct with custom :conc-name / :copier names is honoured."
   (with-temp-buffer
-    (insert "(cl-defstruct (bar (:conc-name bar->)) xx)\n")
+    (insert "(cl-defstruct (bar (:conc-name bar->) (:copier clone-bar)) xx)\n")
     (let ((db (elistan-struct-parse-buffer)))
       (should (equal (cdr (assq 'bar-p db)) '(function (t) (:guard! bar))))
-      (should (assq 'bar->xx db)))))
+      (should (assq 'bar->xx db))
+      ;; The custom copier name is registered; the default copy-bar is not.
+      (should (equal (cdr (assq 'clone-bar db)) '(function (bar) bar)))
+      (should-not (assq 'copy-bar db)))))
 
 (ert-deftest elistan-struct-defclass ()
   "defclass registers predicate, constructor and :accessor slots."
