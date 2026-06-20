@@ -96,7 +96,14 @@ The v1 checker front-end is implemented. Design rationale lives in
   as an in-file type source, and (opt-in) loads Elsa's `elsa-typed-*.el` builtin
   type databases for coverage; translates Elsa notation to typespec. Drivers bind
   in-file annotations to `elistan-source-local`.
+- `elistan-struct.el` — reads `cl-defstruct`/`defclass` definitions as a type
+  source: predicate guards (narrowing), constructor/copier/accessor types; the
+  class name is an opaque atomic type (full EIEIO subtyping is future work).
 - `elistan-batch.el` — batch/CLI driver (`elistan-batch-run`).
+- `elistan-project.el` — project-wide (cross-file) checking
+  (`elistan-project-check`/`-run`): aggregate every file's annotations + struct
+  defs into one registry, so a contract declared in one file checks calls in
+  another.
 - `elistan-flymake.el` — Flymake backend (`elistan-flymake-setup`).
 
 ### Coordination with typespec (implemented locally for now, to migrate)

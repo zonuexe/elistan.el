@@ -73,9 +73,12 @@ unless it reduces to (1).
 - **Deferred / future:** changed-only incremental re-analysis (optimisation);
   `&key`/keyword (`cl-defun`) parameters; analysing non-function top-level forms;
   a Flycheck backend; the batch driver's CLI surface; precise
-  `catch`/`condition-case` modelling. **Elsa-contrast expansions (ADR-0013):** a
-  project / cross-file mode; an optional style-lint layer. (Elsa annotation
-  *comments* and builtin *type databases* are both done — `elistan-elsa.el`.)
+  `catch`/`condition-case` modelling; **full EIEIO** (inheritance subtyping,
+  slot-typed `oref`/`oset` — needs class types in typespec). An optional
+  style-lint layer. (Done: Elsa annotation *comments* + builtin *type databases*
+  — `elistan-elsa.el`; **project / cross-file mode** — `elistan-project.el`;
+  **`cl-defstruct`/`defclass` as a type source** with opaque class types +
+  predicate narrowing — `elistan-struct.el`.)
 - **Call findings only against author-written contracts (ADR-0014):** builtin
   type databases drive narrowing and result typing but never flag a call, since
   Emacs builtins are leniently polymorphic and DB types are incomplete.

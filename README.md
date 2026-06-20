@@ -44,6 +44,13 @@ emacs -Q --batch -L . -L ../emacs-typespec \
   -l elistan-batch --eval '(elistan-batch-run)' FILE.el ...
 ```
 
+Project-wide (a contract declared in one file checks calls in another):
+
+```sh
+emacs -Q --batch -L . -L ../emacs-typespec \
+  -l elistan-project --eval '(elistan-project-run)' FILE.el ...
+```
+
 In the editor — enable the Flymake backend in `emacs-lisp-mode`:
 
 ```elisp
@@ -55,7 +62,8 @@ Function types are resolved from in-file
 (`;; (name :: (function (string) integer))`), `typespec` declarations,
 typespec's builtin registry, and elistan's own fallback table.  Elsa's builtin
 type databases can be loaded for extra coverage via
-`elistan-elsa-register-typed-dbs`.
+`elistan-elsa-register-typed-dbs`.  `cl-defstruct` and `defclass` definitions in
+the analysed file also contribute predicate, constructor and accessor types.
 
 Argument type mismatches are reported only against author-written contracts
 (annotations and `typespec` declarations); builtin databases inform narrowing
