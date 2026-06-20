@@ -64,7 +64,11 @@ Assumes the analysed buffer is current (for position lookup)."
   "Analyse FILE and return a list of report strings, one per finding."
   (with-temp-buffer
     (insert-file-contents file)
-    (let* ((elistan-source-local (elistan-elsa-parse-buffer))
+    (let* (;; File-local annotations take priority, but any already-bound
+           ;; `elistan-source-local' (e.g. a project-wide registry) remains
+           ;; visible as a fallback.
+           (elistan-source-local (append (elistan-elsa-parse-buffer)
+                                         elistan-source-local))
            ;; Skip findings with no source position: they are macro-introduced
            ;; and not user-actionable (the editor driver skips them likewise).
            (findings (seq-filter #'elistan-finding-pos
