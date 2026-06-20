@@ -63,5 +63,26 @@
       (should (equal (cdr (assq 'my-len db))
                      '(function ((or sequence null)) integer))))))
 
+(ert-deftest elistan-elsa-corrections ()
+  "Known-unsound Elsa builtin return types are corrected on load."
+  (let ((f (make-temp-file
+            "elsa-db" nil ".el"
+            (concat "(put 'help-function-arglist 'elsa-type"
+                    " (elsa-make-type (function (symbol) (list symbol))))\n"
+                    "(put 'other-fn 'elsa-type"
+                    " (elsa-make-type (function (string) int)))\n")))
+        (elistan-source-builtins nil))
+    (unwind-protect
+        (progn
+          (elistan-elsa-register-typed-dbs (list f))
+          ;; the unsound entry is replaced with a sound (string-admitting) type,
+          ;; so `(stringp (help-function-arglist f))' is no longer "dead".
+          (should (equal (cdr (assq 'help-function-arglist elistan-source-builtins))
+                         '(function (symbol) (or list symbol string))))
+          ;; a non-corrected entry is left exactly as parsed.
+          (should (equal (cdr (assq 'other-fn elistan-source-builtins))
+                         '(function (string) integer))))
+      (delete-file f))))
+
 (provide 'elistan-elsa-test)
 ;;; elistan-elsa-test.el ends here

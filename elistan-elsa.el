@@ -96,6 +96,20 @@ alist of SYM -> typespec funspec, for function types only."
         ((end-of-file invalid-read-syntax) nil)))
     (nreverse result)))
 
+(defconst elistan-elsa--corrections
+  '(;; Elsa's builtin DB under-approximates these return types (it omits values
+    ;; they really return), which is unsound and produces false-positive dead
+    ;; branches (e.g. `(stringp (help-function-arglist f))' flagged dead, though
+    ;; the function returns "[Arg list not available…]" for autoloads).  Override
+    ;; with sound (over-approximating) types when the DBs are loaded.
+    (help-function-arglist . (function (symbol) (or list symbol string)))
+    (char-before . (function ((or integer marker null)) (or integer null)))
+    (char-after  . (function ((or integer marker null)) (or integer null))))
+  "Sound replacements for known-unsound Elsa builtin-DB function types.
+A type-database is a coverage heuristic; an under-approximated *return* type
+breaks the zero-false-positive posture (ADR-0004) when used for narrowing, so
+these are corrected at load time.")
+
 (defun elistan-elsa-register-typed-dbs (files)
   "Load Elsa type-database FILES into `elistan-source-builtins'.
 Return the number of function types registered."
@@ -105,6 +119,9 @@ Return the number of function types registered."
         (with-temp-buffer
           (insert-file-contents file)
           (setq acc (append acc (elistan-elsa-parse-typed-db))))))
+    ;; Override known-unsound entries (see `elistan-elsa--corrections').
+    (dolist (c elistan-elsa--corrections)
+      (setf (alist-get (car c) acc) (cdr c)))
     (setq elistan-source-builtins acc)
     (length acc)))
 
