@@ -55,11 +55,12 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   `elsa-typed-*.el` builtin DBs (`elistan-elsa-register-typed-dbs`, opt-in,
   ~327 types). Translates Elsa notation → typespec.
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` as a type source
-  (predicate guards, constructor/copier/accessor types; class name = opaque
-  atomic type). Slot `:type` becomes the accessor return type
-  (`elistan-struct--translate-type`, conservative: unmodelled → `mixed`); a
-  nil/absent default widens it with `null` so a `cl-defstruct` `:type` that the
-  nil default contradicts can't be misread as never-nil.
+  (predicate guards, constructor/copier/accessor/`:reader` types; class name =
+  opaque atomic type). Slot `:type` becomes the reader return type
+  (`elistan-struct--translate-type`, conservative: unmodelled → `mixed`,
+  parameterised containers → bare container); a nil/absent default widens it
+  with `null` so a `cl-defstruct` `:type` that the nil default contradicts
+  can't be misread as never-nil. Honours the `:copier` option name.
 - `elistan-declare.el` — reads the analysed file's own typespec declarations:
   the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
   forms. Bound into `elistan-source-local`, so an in-file contract is

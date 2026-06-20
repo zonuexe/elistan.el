@@ -97,9 +97,10 @@ The v1 checker front-end is implemented. Design rationale lives in
   type databases for coverage; translates Elsa notation to typespec. Drivers bind
   in-file annotations to `elistan-source-local`.
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` definitions as a type
-  source: predicate guards (narrowing), constructor/copier/accessor types
-  (accessor return = the slot's `:type`, conservatively translated); the class
-  name is an opaque atomic type (full EIEIO subtyping is future work).
+  source: predicate guards (narrowing), constructor/copier/accessor/`:reader`
+  types (reader return = the slot's `:type`, conservatively translated; honours
+  the `:copier` option name); the class name is an opaque atomic type (full
+  EIEIO subtyping is future work).
 - `elistan-declare.el` — reads the analysed file's own typespec declarations:
   the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
   forms. Statically extracted (forms are read, not eval'd) and bound into
