@@ -101,6 +101,18 @@ declaration, then typespec's builtin registry, then a loaded builtin database
            (cdr (assq sym elistan-source-builtins))
            (cdr (assq sym elistan-source--fallback)))))
 
+(defun elistan-source-authoritative-p (sym)
+  "Return non-nil if SYM's type is an author-written contract.
+Only in-file annotations (`elistan-source-local') and user `typespec'
+declarations are trusted for *argument checking*; the builtin databases are
+coverage heuristics that may be incomplete (e.g. they omit that `(message nil)'
+is valid or that `substring' accepts a vector), so calls against them are not
+flagged.  Builtin types are still used for narrowing and result typing."
+  (and (symbolp sym)
+       (or (assq sym elistan-source-local)
+           (function-get sym 'typespec))
+       t))
+
 (defun elistan-source-return (funspec)
   "Return the declared return type of FUNSPEC, or nil if FUNSPEC is not a spec."
   (pcase funspec

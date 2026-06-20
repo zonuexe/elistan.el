@@ -65,7 +65,10 @@ Assumes the analysed buffer is current (for position lookup)."
   (with-temp-buffer
     (insert-file-contents file)
     (let* ((elistan-source-local (elistan-elsa-parse-buffer))
-           (findings (elistan-check-forms (elistan-batch--read-buffer))))
+           ;; Skip findings with no source position: they are macro-introduced
+           ;; and not user-actionable (the editor driver skips them likewise).
+           (findings (seq-filter #'elistan-finding-pos
+                                 (elistan-check-forms (elistan-batch--read-buffer)))))
       (mapcar (lambda (f) (elistan-batch--format file f)) findings))))
 
 (defun elistan-batch-run ()

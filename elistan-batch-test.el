@@ -46,13 +46,15 @@
   "The batch driver reads in-file Elsa `:: ' annotations and checks against them."
   (let ((file (make-temp-file
                "elistan-elsa" nil ".el"
-               ";; (et-en :: (function (string) string))\n(defun et-en (s) (1+ s))\n")))
+               ";; (et-en :: (function (string) integer))\n(defun et-en (s) s)\n")))
     (unwind-protect
-        ;; s is annotated `string'; `1+' wants a number -> a mismatch is reported
-        ;; (which only happens if the annotation was read and applied).
+        ;; s is annotated `string' but the declared return is `integer'; the body
+        ;; returns s -> a return mismatch is reported (only if the annotation was
+        ;; read and applied).
         (should (seq-find
                  (lambda (r)
-                   (string-match-p "argument 1 has type string, expected number" r))
+                   (string-match-p
+                    "return type string is incompatible with declared integer" r))
                  (elistan-batch-check-file file)))
       (delete-file file))))
 

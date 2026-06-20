@@ -148,6 +148,67 @@
   (should (listp (elistan-walk-defun
                   '(defun et-dotted2 (f) (-lambda ((head . tail)) (cons head tail)))))))
 
+(ert-deftest elistan-walk-and-setq-mutation ()
+  "A `setq' inside `and' (as `when-let' expands to) propagates out of the and."
+  ;; Without carrying the mutation, `found' would stay null and `(if found ...)'
+  ;; would be a false dead-branch.
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-andsetq (x)
+        (let ((found nil))
+          (when (and x (setq found x)) (ignore found))
+          (if found 1 2))))
+    'dead-branch)))
+
+(ert-deftest elistan-walk-builtin-args-not-flagged ()
+  "Calls to non-authoritative (builtin/fallback) functions are not arg-checked."
+  ;; `number-to-string' (fallback) wants a number; passing the string `s' is NOT
+  ;; flagged, because builtin databases are coverage heuristics, not contracts.
+  (elistan-walk-test--declare 'et-bi '(function (string) string))
+  (should-not (elistan-walk-test--of
+               (elistan-walk-defun '(defun et-bi (s) (number-to-string s) s))
+               'call-type-mismatch)))
+
+(ert-deftest elistan-walk-condition-case-handler-mutation ()
+  "A `setq' in a condition-case handler is carried out (no false dead-branch)."
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-cc (x)
+        (let ((skip nil))
+          (condition-case e (setq x (frob x)) (error (setq skip t)))
+          (if skip 1 2))))
+    'dead-branch)))
+
+(ert-deftest elistan-walk-free-variable-not-tracked ()
+  "A free/special variable is not assumed constant after `(setq it nil)'."
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-free (x)
+        (setq et-some-global nil)
+        (frob x)
+        (if et-some-global 1 2)))
+    'dead-branch)))
+
+(ert-deftest elistan-walk-nil-binding-not-constant ()
+  "A variable bound to the literal nil is treated as unknown, not null."
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-nilb (x)
+        (let ((acc nil))
+          (external-filler)
+          (if acc 1 2))))
+    'dead-branch)))
+
+(ert-deftest elistan-walk-macroexpand-failure-no-crash ()
+  "A defun whose macro expansion could fail does not crash the walker."
+  (should (listp (elistan-walk-defun
+                  '(defun et-nl (n)
+                     (named-let loop ((i 0)) (when (< i n) (loop (1+ i)))))))))
+
 (ert-deftest elistan-walk-non-defun ()
   "Non-function-defining top-level forms are out of scope."
   (should-not (elistan-walk-form '(defvar foo nil)))

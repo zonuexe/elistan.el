@@ -53,6 +53,22 @@ covering destructive forms that stay unexpanded when a library is not loaded.
 Forms that macroexpand to `setq' (the loaded `push'/`setf'/… in most cases) are
 handled by the `setq' path instead.")
 
+(defvar elistan-walk--lexical-vars nil
+  "Bare variables that are lexical in the current scope (params + `let' bindings).
+Only these are tracked through `setq': a free/special variable can be mutated
+unobservably by any function it is dynamically bound around, so its type is left
+`unknown' rather than assumed constant.")
+
+(defun elistan-walk--arglist-vars (arglist)
+  "Return the bare parameter symbols in ARGLIST (dropping &-markers)."
+  (delq nil (mapcar (lambda (p)
+                      (and (symbolp p)
+                           (let ((b (elistan-walk--bare p)))
+                             (and (not (memq b '(&optional &rest &key
+                                                 &allow-other-keys)))
+                                  b))))
+                    arglist)))
+
 (defvar elistan-walk--closure-vars nil
   "Bare variables `setq'-assigned inside a lambda within the current defun.
 Such variables are captured by a closure we do not analyse, so their value at
@@ -123,7 +139,7 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
 (defun elistan-walk--list (form env)
   "Dispatch a cons FORM under ENV."
   (pcase form
-    (`(quote ,v) (cons (list 'const v) env))
+    (`(quote ,v) (cons (if (null v) 'null (list 'const v)) env))
     (`(function ,_) (cons 'function env))
     (`(lambda . ,_) (cons 'function env))
     (`(if ,test ,then . ,else) (elistan-walk--if test then else env))
@@ -215,8 +231,22 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
 ;; `elistan-recognise'.  Leaking it would double-apply narrowing at the
 ;; enclosing `if'/`cond' and manufacture false dead-branch findings.
 
+(defun elistan-walk--carry-mutations (env threaded forms)
+  "Return ENV with each variable `setq'-assigned in FORMS widened from THREADED.
+A `setq' inside `and'/`or' is *conditional* (it runs only if the earlier
+operands were truthy / nil), so the variable's out-type is the union of its
+original type and the assigned one — never just the assigned one, which would
+wrongly narrow it.  Narrowing on non-assigned variables is left behind."
+  (let ((out env))
+    (dolist (v (elistan-walk--assigned-vars (cons 'progn forms)) out)
+      (setq out (elistan-env-set
+                 out v (elistan-type-union (elistan-env-get env v)
+                                           (elistan-env-get threaded v)))))))
+
 (defun elistan-walk--and (args env)
-  "Walk `(and ARGS...)' under ENV with internal progressive narrowing."
+  "Walk `(and ARGS...)' under ENV with internal progressive narrowing.
+The out-env keeps `setq' mutations from the operands but not the speculative
+narrowing (which is the separate recogniser's job)."
   (if (null args)
       (cons '(const t) env)
     (let ((e env) (last 'null) (diverged nil))
@@ -225,12 +255,14 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
           (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r)))
             (setq last at)
             (if (elistan-type-never-p at)
-                (setq diverged t)
+                (setq e ae diverged t)
               (setq e (elistan-refine-true ae (elistan-recognise a ae)))))))
-      (cons (if diverged 'never (elistan-type-union 'null last)) env))))
+      (cons (if diverged 'never (elistan-type-union 'null last))
+            (elistan-walk--carry-mutations env e args)))))
 
 (defun elistan-walk--or (args env)
-  "Walk `(or ARGS...)' under ENV with internal progressive narrowing."
+  "Walk `(or ARGS...)' under ENV with internal progressive narrowing.
+The out-env keeps `setq' mutations but not the speculative narrowing."
   (if (null args)
       (cons 'null env)
     (let ((e env) (types nil))
@@ -238,9 +270,10 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
         (dolist (a args)
           (let* ((r (elistan-walk-type a e)) (at (car r)) (ae (cdr r)))
             (push at types)
-            (when (elistan-type-never-p at) (throw 'diverge nil))
+            (when (elistan-type-never-p at) (setq e ae) (throw 'diverge nil))
             (setq e (elistan-refine-false ae (elistan-recognise a ae))))))
-      (cons (apply #'elistan-type-union (nreverse types)) env))))
+      (cons (apply #'elistan-type-union (nreverse types))
+            (elistan-walk--carry-mutations env e args)))))
 
 (defun elistan-walk--progn (body env)
   "Walk an implicit-progn BODY under ENV; divergence stops the sequence."
@@ -265,11 +298,21 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
     (dolist (b bindings)
       (let* ((var (if (consp b) (car b) b))
              (init (if (consp b) (cadr b) nil))
-             (ir (elistan-walk-type init (if sequential work-env env))))
-        (when sequential (setq work-env (cdr ir)))
+             ;; A binding to the literal `nil' is almost always an accumulator
+             ;; or flag that gets mutated later — sometimes by a path we cannot
+             ;; see (a dynamic special variable an external function fills in).
+             ;; Seed it as `unknown', not `null', so we never wrongly conclude
+             ;; "always nil".  Concrete-typed bindings keep their precise type.
+             (itype (if (null init)
+                        'unknown
+                      (let ((ir (elistan-walk-type init (if sequential work-env env))))
+                        (when sequential (setq work-env (cdr ir)))
+                        (car ir)))))
         (push var vars)
-        (setq work-env (elistan-walk--bind work-env var (car ir)))))
-    (let* ((br (elistan-walk--progn body work-env))
+        (setq work-env (elistan-walk--bind work-env var itype))))
+    (let* ((elistan-walk--lexical-vars
+            (append (mapcar #'elistan-walk--bare vars) elistan-walk--lexical-vars))
+           (br (elistan-walk--progn body work-env))
            (be (cdr br)))
       ;; Local bindings do not leak: restore the outer type of each bound var.
       (dolist (v vars)
@@ -282,7 +325,11 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
     (while (and (consp p) (consp (cdr p)))
       (let ((r (elistan-walk-type (cadr p) e)))
         (setq ty (car r)
-              e (elistan-walk--bind (cdr r) (car p) ty)
+              ;; Only track assignment to a lexical variable; a free/special
+              ;; variable may be changed by code we cannot see.
+              e (if (memq (elistan-walk--bare (car p)) elistan-walk--lexical-vars)
+                    (elistan-walk--bind (cdr r) (car p) ty)
+                  (cdr r))
               p (cddr p))))
     (cons ty e)))
 
@@ -320,13 +367,23 @@ Tolerates improper (dotted) lists and does not descend into quoted data."
     br))
 
 (defun elistan-walk--condition-case (bodyform handlers env)
-  "Walk `(condition-case VAR BODYFORM HANDLERS...)' under ENV (approximated)."
+  "Walk `(condition-case VAR BODYFORM HANDLERS...)' under ENV (approximated).
+The value is the union of the body and handler values; mutations from the body
+and handlers are carried out conditionally (the body may error partway, or a
+handler may run), so an assigned variable is widened to the union of its types."
   (let* ((br (elistan-walk-type bodyform env))
-         (types (list (car br))))
+         (types (list (car br)))
+         (envs (list (cdr br)))
+         (forms (list bodyform)))
     (dolist (h handlers)
-      (when (cdr h)
-        (push (car (elistan-walk--progn (cdr h) env)) types)))
-    (cons (apply #'elistan-type-union types) env)))
+      (when (consp h)
+        (let ((hr (elistan-walk--progn (cdr h) env)))
+          (push (car hr) types)
+          (push (cdr hr) envs)
+          (setq forms (append forms (cdr h))))))
+    (cons (apply #'elistan-type-union types)
+          (elistan-walk--carry-mutations
+           env (cl-reduce #'elistan-env-join envs) forms))))
 
 ;;; Calls
 
@@ -388,7 +445,10 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
         (if (not funspec)
             (cons 'unknown env2)
           (progn
-            (elistan-walk--check-args (car form) funspec arg-types arg-forms)
+            ;; Only check arguments against an author-written contract; builtin
+            ;; databases are coverage heuristics (may be too strict).
+            (when (elistan-source-authoritative-p fn)
+              (elistan-walk--check-args (car form) funspec arg-types arg-forms))
             (cons (elistan-walk--call-result funspec arg-types) env2)))))))
 
 ;;; Entry points
@@ -424,9 +484,16 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
       (`(,(or 'defun 'defsubst 'cl-defun) ,name ,arglist . ,body)
        (let* ((elistan-walk--findings nil)
               (funspec (elistan-source-function-spec (elistan-walk--bare name)))
-              (expanded (macroexpand-all (cons 'progn body)))
+              ;; Macro expansion can fail (e.g. `named-let' demands
+              ;; lexical-binding, or a macro is not loaded); degrade to the
+              ;; unexpanded body rather than crash (ADR-0005).
+              (expanded (condition-case nil
+                            (let ((lexical-binding t))
+                              (macroexpand-all (cons 'progn body)))
+                          (error (cons 'progn body))))
               (elistan-walk--closure-vars
                (elistan-walk--closure-assigned-vars expanded))
+              (elistan-walk--lexical-vars (elistan-walk--arglist-vars arglist))
               (env (elistan-walk--seed-env arglist funspec))
               (body-type (car (elistan-walk-type expanded env))))
          (when funspec

@@ -62,6 +62,9 @@ The dynamic (`unknown') is consistent with everything, in both directions.
 TODO: promote to typespec as the public gradual-consistency relation."
   (cond
    ((or (elistan-type-dynamic-p value) (elistan-type-dynamic-p expected)) t)
+   ;; `never' is the bottom type: assignable anywhere, and a `never'-typed value
+   ;; means the code path is unreachable, so there is nothing to flag.
+   ((elistan-type-never-p value) t)
    (t (not (elistan-type-never-p (elistan-type-meet value expected))))))
 
 ;; The typespec foundation is still maturing and can error on some inputs (e.g.
@@ -109,6 +112,9 @@ Subtracting from the dynamic leaves it dynamic."
     (and (not (elistan-type-dynamic-p ty))
          (not (elistan-type-top-p ty))
          (not (memq ty '(null never)))
+         ;; A provably-nil type is obviously not never-nil (guards against a
+         ;; typespec quirk where `(const nil)' mis-intersects with `null').
+         (not (elistan-type-always-nil-p ty))
          ;; nil is not a member: `null' is not acceptable where TY is expected.
          (not (elistan-type-consistent-p 'null ty)))))
 
