@@ -60,6 +60,7 @@
 (defun elistan-flymake-backend (report-fn &rest _args)
   "A Flymake backend that reports elistan findings via REPORT-FN."
   (let* ((buffer (current-buffer))
+         (elistan-source-local (elistan-elsa-parse-buffer))
          (forms (save-excursion
                   (goto-char (point-min))
                   (elistan-batch--read-buffer)))

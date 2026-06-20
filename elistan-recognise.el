@@ -63,10 +63,15 @@
   (and (symbolp form) (not (memq form '(nil t))) (not (keywordp form))))
 
 (defun elistan-recognise--const (form)
-  "Return the constant type `(const V)' for a literal FORM, or nil."
+  "Return the type a literal FORM narrows to, or nil.
+The nil constant becomes the `null' type rather than `(const nil)': typespec
+handles `null' in `meet'/`diff' reliably, whereas `(const nil)' currently
+mis-intersects to `never'."
   (cond
-   ((and (consp form) (eq (car form) 'quote)) (list 'const (cadr form)))
-   ((or (numberp form) (stringp form) (keywordp form) (memq form '(t nil)))
+   ((and (consp form) (eq (car form) 'quote))
+    (if (null (cadr form)) 'null (list 'const (cadr form))))
+   ((null form) 'null)
+   ((or (numberp form) (stringp form) (keywordp form) (eq form t))
     (list 'const form))
    (t nil)))
 

@@ -77,12 +77,19 @@
 Consulted only when typespec has neither a declaration nor a builtin entry.
 TODO: migrate this coverage into typespec-builtins.")
 
+(defvar elistan-source-local nil
+  "Dynamic alist of NAME -> funspec parsed from the file under analysis.
+Highest-priority type source: a driver binds this to in-file declarations or
+annotations (e.g. Elsa `;; (NAME :: TYPE)' comments) before checking, so a
+function's own file can supply its type.")
+
 (defun elistan-source-function-spec (sym)
   "Return the funspec for function SYM, or nil if unknown.
-Order: a user `typespec' declaration, then typespec's builtin registry, then
-elistan's fallback coverage."
+Order: an in-file annotation (`elistan-source-local'), then a user `typespec'
+declaration, then typespec's builtin registry, then elistan's fallback."
   (and (symbolp sym)
-       (or (plist-get (function-get sym 'typespec) :spec)
+       (or (cdr (assq sym elistan-source-local))
+           (plist-get (function-get sym 'typespec) :spec)
            (typespec-builtins-lookup sym)
            (cdr (assq sym elistan-source--fallback)))))
 

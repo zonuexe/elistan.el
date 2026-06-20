@@ -42,6 +42,20 @@
                                   (car reports))))
       (delete-file file))))
 
+(ert-deftest elistan-batch-uses-elsa-annotations ()
+  "The batch driver reads in-file Elsa `:: ' annotations and checks against them."
+  (let ((file (make-temp-file
+               "elistan-elsa" nil ".el"
+               ";; (et-en :: (function (string) string))\n(defun et-en (s) (1+ s))\n")))
+    (unwind-protect
+        ;; s is annotated `string'; `1+' wants a number -> a mismatch is reported
+        ;; (which only happens if the annotation was read and applied).
+        (should (seq-find
+                 (lambda (r)
+                   (string-match-p "argument 1 has type string, expected number" r))
+                 (elistan-batch-check-file file)))
+      (delete-file file))))
+
 (ert-deftest elistan-batch-clean-file ()
   "A file with no analysable issues produces no reports."
   (let ((file (make-temp-file

@@ -35,6 +35,7 @@
 ;;; Code:
 
 (require 'elistan-walk)
+(require 'elistan-elsa)
 
 (defun elistan-batch--read-buffer ()
   "Read all top-level forms from the current buffer, skipping unreadable input.
@@ -63,7 +64,8 @@ Assumes the analysed buffer is current (for position lookup)."
   "Analyse FILE and return a list of report strings, one per finding."
   (with-temp-buffer
     (insert-file-contents file)
-    (let ((findings (elistan-check-forms (elistan-batch--read-buffer))))
+    (let* ((elistan-source-local (elistan-elsa-parse-buffer))
+           (findings (elistan-check-forms (elistan-batch--read-buffer))))
       (mapcar (lambda (f) (elistan-batch--format file f)) findings))))
 
 (defun elistan-batch-run ()
