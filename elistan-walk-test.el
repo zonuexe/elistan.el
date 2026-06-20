@@ -126,6 +126,28 @@ A slot typed integer makes `(stringp …)' on it a provably dead branch."
                      (let ((n (slot-value obj 'missing))) (if (stringp n) 1 2))))
                  'dead-branch))))
 
+(ert-deftest elistan-walk-extra-guards ()
+  "Newly-covered type predicates (arrayp, markerp, …) narrow to a dead branch
+when the tested value is provably disjoint from the guard type."
+  ;; integer is never an array -> `(arrayp x)' then-branch is dead.
+  (elistan-walk-test--declare 'et-arr '(function (integer) integer))
+  (let ((f (elistan-walk-test--of
+            (elistan-walk-defun '(defun et-arr (x) (if (arrayp x) 1 2)))
+            'dead-branch)))
+    (should f)
+    (should (eq (plist-get (elistan-finding-data f) :verdict) 'always-false)))
+  ;; a string is never a marker -> `(markerp x)' then-branch is dead.
+  (elistan-walk-test--declare 'et-mk '(function (string) integer))
+  (should (elistan-walk-test--of
+           (elistan-walk-defun '(defun et-mk (x) (if (markerp x) 1 2)))
+           'dead-branch))
+  ;; a sequence-typed value passed where it IS a sequence: no dead branch
+  ;; (sequencep is consistent), i.e. no false positive.
+  (elistan-walk-test--declare 'et-seq '(function (vector) integer))
+  (should-not (elistan-walk-test--of
+               (elistan-walk-defun '(defun et-seq (x) (if (sequencep x) 1 2)))
+               'dead-branch)))
+
 (ert-deftest elistan-walk-and-or-dead-guard ()
   "A provably-constant guard makes the rest of an `and'/`or' unreachable."
   (elistan-walk-test--declare 'et-aa '(function (string) integer))
