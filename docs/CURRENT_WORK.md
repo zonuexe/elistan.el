@@ -13,8 +13,8 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **52 ert tests**, green on source *and* byte-compiled (`make check`).
-- 11 source modules + 11 `*-test.el`.
+- **58 ert tests**, green on source *and* byte-compiled (`make check`).
+- 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
 
@@ -60,6 +60,10 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   (`elistan-struct--translate-type`, conservative: unmodelled → `mixed`); a
   nil/absent default widens it with `null` so a `cl-defstruct` `:type` that the
   nil default contradicts can't be misread as never-nil.
+- `elistan-declare.el` — reads the analysed file's own typespec declarations:
+  the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
+  forms. Bound into `elistan-source-local`, so an in-file contract is
+  authoritative (hardened against improper/dotted forms).
 - `elistan-recognise.el` — condition → refinement (guards, null/not, eq-const,
   comparisons, memq, and/or/not).
 - `elistan-finding.el` — `cl-defstruct elistan-finding` + formatter.
@@ -69,9 +73,11 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   symbols-with-pos. Three findings: `call-type-mismatch`, `dead-branch`,
   `return-type-mismatch`.
 - `elistan-batch.el` — batch/CLI driver; merges in-file annotations + struct
-  defs into `elistan-source-local`; drops findings with no position.
+  defs + typespec declarations into `elistan-source-local`; drops findings with
+  no position.
 - `elistan-project.el` — project-wide (cross-file) checking.
-- `elistan-flymake.el` — Flymake backend.
+- `elistan-flymake.el` — Flymake backend (now merges the same in-file sources
+  as the batch driver).
 
 ## Posture (important)
 
@@ -136,9 +142,15 @@ Some were spawned as task chips in `../emacs-typespec`:
    *Future precision left here:* element types for `(list-of T)`/`(vector T)`,
    and chasing a slot whose `:type` is another struct/class (cross-references)
    — both currently widen to `mixed`/opaque.
-2. **Static in-file `declare` typespecs** — forms are read, not eval'd, so
-   `(declare (typespec ...))` in the analysed file isn't registered. Parse it
-   like the Elsa annotations.
+2. ~~**Static in-file `declare` typespecs**~~ — *done* (`elistan-declare.el`).
+   Reads the analysed file's own `(typespec #'NAME SPEC)` macro and
+   `(declare (typespec-ftype SPEC))` forms statically and binds them into
+   `elistan-source-local` (authoritative). Wired into batch, project, *and*
+   flymake; re-validated on the elpa sweep (19 findings / 0 crashes). Note: the
+   canonical form is the `(typespec …)` *macro*, not `(declare (typespec …))`
+   (no such declaration handler exists in typespec); `typespec-ftype` is
+   typespec's experimental `declare` spec. Only function/`:forall` specs are
+   registered.
 3. **Full EIEIO** — inheritance subtyping + slot-typed `oref`/`oset`. Blocked on
    typespec class types (item 6 above) — coordinate.
 4. **Flycheck backend**, **changed-only incremental** re-analysis,

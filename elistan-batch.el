@@ -26,17 +26,20 @@
 ;; Unreadable forms are skipped (ADR-0008).  Positions come from
 ;; `read-positioning-symbols' where available.
 ;;
-;; Limitation (v1): forms are read, not evaluated, so `declare'-based typespec
-;; declarations in the analysed file are not auto-registered.  Function types
-;; come from already-loaded declarations, typespec builtins, and elistan's
-;; fallback (ADR-0002); static extraction of in-file declarations is future
-;; work.
+;; Forms are read, not evaluated, but in-file type sources are still extracted
+;; statically and merged into `elistan-source-local': Elsa `:: ' annotations
+;; (`elistan-elsa.el'), `cl-defstruct'/`defclass' definitions
+;; (`elistan-struct.el'), and `(typespec …)' / `(declare (typespec-ftype …))'
+;; declarations (`elistan-declare.el').  Other function types come from
+;; already-loaded declarations, typespec builtins, and elistan's fallback
+;; (ADR-0002).
 
 ;;; Code:
 
 (require 'elistan-walk)
 (require 'elistan-elsa)
 (require 'elistan-struct)
+(require 'elistan-declare)
 
 (defun elistan-batch--read-buffer ()
   "Read all top-level forms from the current buffer, skipping unreadable input.
@@ -68,7 +71,8 @@ Assumes the analysed buffer is current (for position lookup)."
     (let* (;; File-local annotations take priority, but any already-bound
            ;; `elistan-source-local' (e.g. a project-wide registry) remains
            ;; visible as a fallback.
-           (elistan-source-local (append (elistan-elsa-parse-buffer)
+           (elistan-source-local (append (elistan-declare-parse-buffer)
+                                         (elistan-elsa-parse-buffer)
                                          (elistan-struct-parse-buffer)
                                          elistan-source-local))
            ;; Skip findings with no source position: they are macro-introduced

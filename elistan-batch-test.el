@@ -58,6 +58,24 @@
                  (elistan-batch-check-file file)))
       (delete-file file))))
 
+(ert-deftest elistan-batch-uses-typespec-declarations ()
+  "The batch driver reads an in-file `(typespec …)' declaration and checks it."
+  (let ((file (make-temp-file
+               "elistan-decl" nil ".el"
+               (concat "(typespec #'et-need-str (function (string) integer))\n"
+                       "(defun et-need-str (s) s)\n"
+                       "(defun et-call (n) (et-need-str (+ n 1)))\n"))))
+    (unwind-protect
+        ;; et-need-str is declared to take a string; et-call passes the result
+        ;; of `(+ n 1)' (a number) -> a call mismatch, only if the in-file
+        ;; declaration was read and treated as authoritative.
+        (should (seq-find
+                 (lambda (r)
+                   (string-match-p
+                    "argument 1 has type number, expected string" r))
+                 (elistan-batch-check-file file)))
+      (delete-file file))))
+
 (ert-deftest elistan-batch-clean-file ()
   "A file with no analysable issues produces no reports."
   (let ((file (make-temp-file

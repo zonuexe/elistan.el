@@ -34,6 +34,9 @@
 (require 'flymake)
 (require 'elistan-walk)
 (require 'elistan-batch)                ; reuse `elistan-batch--read-buffer'
+(require 'elistan-elsa)
+(require 'elistan-struct)
+(require 'elistan-declare)
 
 (defun elistan-flymake--type (severity)
   "Map a finding SEVERITY to a Flymake diagnostic type."
@@ -60,7 +63,11 @@
 (defun elistan-flymake-backend (report-fn &rest _args)
   "A Flymake backend that reports elistan findings via REPORT-FN."
   (let* ((buffer (current-buffer))
-         (elistan-source-local (elistan-elsa-parse-buffer))
+         ;; Same in-file type sources as the batch driver (ADR-0002).
+         (elistan-source-local (append (elistan-declare-parse-buffer)
+                                       (elistan-elsa-parse-buffer)
+                                       (elistan-struct-parse-buffer)
+                                       elistan-source-local))
          (forms (save-excursion
                   (goto-char (point-min))
                   (elistan-batch--read-buffer)))

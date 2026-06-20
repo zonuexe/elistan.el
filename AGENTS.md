@@ -97,13 +97,18 @@ The v1 checker front-end is implemented. Design rationale lives in
   type databases for coverage; translates Elsa notation to typespec. Drivers bind
   in-file annotations to `elistan-source-local`.
 - `elistan-struct.el` — reads `cl-defstruct`/`defclass` definitions as a type
-  source: predicate guards (narrowing), constructor/copier/accessor types; the
-  class name is an opaque atomic type (full EIEIO subtyping is future work).
+  source: predicate guards (narrowing), constructor/copier/accessor types
+  (accessor return = the slot's `:type`, conservatively translated); the class
+  name is an opaque atomic type (full EIEIO subtyping is future work).
+- `elistan-declare.el` — reads the analysed file's own typespec declarations:
+  the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
+  forms. Statically extracted (forms are read, not eval'd) and bound into
+  `elistan-source-local`, so an in-file contract is authoritative for checking.
 - `elistan-batch.el` — batch/CLI driver (`elistan-batch-run`).
 - `elistan-project.el` — project-wide (cross-file) checking
-  (`elistan-project-check`/`-run`): aggregate every file's annotations + struct
-  defs into one registry, so a contract declared in one file checks calls in
-  another.
+  (`elistan-project-check`/`-run`): aggregate every file's annotations, struct
+  defs, and typespec declarations into one registry, so a contract declared in
+  one file checks calls in another.
 - `elistan-flymake.el` — Flymake backend (`elistan-flymake-setup`).
 
 ### Coordination with typespec (implemented locally for now, to migrate)
@@ -123,12 +128,14 @@ elistan first and funnelled for later extraction:
 
 ### Known limitation
 
-elistan reads forms but does not evaluate them. In-file **Elsa-style**
-annotations (`;; (NAME :: TYPE)`) *are* read statically (`elistan-elsa.el`), but
-`declare`-based typespec declarations in the analysed file are still not
-auto-registered. Other function types come from already-loaded declarations,
-typespec builtins, and the fallback. Static extraction of in-file `declare`
-typespecs is future work.
+elistan reads forms but does not evaluate them. In-file type sources are still
+extracted statically: Elsa-style annotations (`;; (NAME :: TYPE)`,
+`elistan-elsa.el`), `cl-defstruct`/`defclass` definitions (`elistan-struct.el`),
+and the file's own `(typespec …)` / `(declare (typespec-ftype …))` declarations
+(`elistan-declare.el`). Other function types come from already-loaded
+declarations, typespec builtins, and the fallback. Still not handled
+statically: `&key`/`cl-defun` parameter typing and non-function top-level forms
+(see the PRD's deferred list).
 
 ## Conventions
 
