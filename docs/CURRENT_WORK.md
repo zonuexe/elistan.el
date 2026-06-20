@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **69 ert tests**, green on source *and* byte-compiled (`make check`).
+- **70 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
@@ -74,9 +74,10 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
 - `elistan-walk.el` — the analysis core. `elistan-walk-type` threads
   `(TYPE . ENV)` with divergence-aware confluence; `elistan-walk-defun` /
   `elistan-check-forms` are the entry points. Descends into lambda bodies
-  (params + captured vars `unknown`). **Per-defun work budget** +
-  symbols-with-pos. Three findings: `call-type-mismatch`, `dead-branch`,
-  `return-type-mismatch`.
+  (params + captured vars `unknown`); types `oref`/`slot-value` reads and checks
+  `oset` writes. **Per-defun work budget** + symbols-with-pos. Four findings:
+  `call-type-mismatch`, `dead-branch`, `return-type-mismatch`,
+  `slot-type-mismatch`.
 - `elistan-batch.el` — batch/CLI driver; merges in-file annotations + struct
   defs + typespec declarations into `elistan-source-local`; drops findings with
   no position.
@@ -185,9 +186,11 @@ Status after the `../emacs-typespec` foundation pass:
      project mode via `elistan-project-struct-infos`).
    - ~~(c) slot-typed `oref`/`slot-value` reads~~ — done
      (`elistan-walk--oref` + `elistan-walk-class-slots`, inheritance-aware).
-   - *Remaining (optional):* `oset`/`(setf (oref …) …)` **value checking** — a
-     defclass slot `:type` is EIEIO-enforced, so a provably-wrong assigned value
-     could be flagged (sound), but it is rarer and not yet implemented.
+   - ~~(d) `oset`/`eieio-oset` value checking~~ — done
+     (`slot-type-mismatch` finding; gated on provable disjointness, EIEIO
+     enforces defclass slot `:type`). `(setf (oref …) …)` is covered when it
+     macroexpands to `eieio-oset`; the unexpanded `setf` place form is not yet
+     matched (minor).
    Design note: under zero-FP + EIEIO's open world, class subtyping adds
    *acceptance/narrowing precision*, not rejection of unrelated classes (that
    would be unsound).
