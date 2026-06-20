@@ -154,8 +154,11 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
   "Dispatch a cons FORM under ENV."
   (pcase form
     (`(quote ,v) (cons (if (null v) 'null (list 'const v)) env))
+    (`(function (lambda ,args . ,body))
+     (elistan-walk--lambda args body) (cons 'function env))
     (`(function ,_) (cons 'function env))
-    (`(lambda . ,_) (cons 'function env))
+    (`(lambda ,args . ,body)
+     (elistan-walk--lambda args body) (cons 'function env))
     (`(if ,test ,then . ,else) (elistan-walk--if test then else env))
     (`(cond . ,clauses) (elistan-walk--cond clauses env))
     (`(and . ,args) (elistan-walk--and args env))
@@ -175,6 +178,19 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
      (cons 'unknown (cdr (elistan-walk--progn body env))))
     (`(,(pred symbolp) . ,_) (elistan-walk--call form env))
     (_ (cons 'unknown env))))
+
+(defun elistan-walk--lambda (arglist body)
+  "Analyse a lambda's BODY for findings; return nil.
+The lambda's parameters are seeded as `unknown' (the call site is unknown), and
+captured variables are left `unknown' too: a closure may run at any time, so a
+captured binding's narrowed type cannot be assumed to still hold — keeping them
+dynamic preserves the zero-false-positive posture (ADR-0004).  The body was
+already macro-expanded with the enclosing defun, so it is walked directly;
+findings accumulate in `elistan-walk--findings'."
+  (let ((elistan-walk--lexical-vars (elistan-walk--arglist-vars arglist))
+        (env (elistan-walk--seed-env arglist nil)))
+    (elistan-walk-type (cons 'progn body) env)
+    nil))
 
 ;;; Control forms
 
@@ -340,10 +356,13 @@ The out-env keeps `setq' mutations but not the speculative narrowing."
       (let ((r (elistan-walk-type (cadr p) e)))
         (setq ty (car r)
               ;; Only track assignment to a lexical variable; a free/special
-              ;; variable may be changed by code we cannot see.
+              ;; (or closure-captured) variable may be changed by code we cannot
+              ;; see.  But the explicit assignment still invalidates any prior
+              ;; narrowing of it, so reset it to `unknown' rather than leaving a
+              ;; stale (possibly narrowed) type behind.
               e (if (memq (elistan-walk--bare (car p)) elistan-walk--lexical-vars)
                     (elistan-walk--bind (cdr r) (car p) ty)
-                  (cdr r))
+                  (elistan-env-set (cdr r) (car p) 'unknown))
               p (cddr p))))
     (cons ty e)))
 

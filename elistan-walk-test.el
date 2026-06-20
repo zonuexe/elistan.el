@@ -54,6 +54,52 @@
     (should (eq (plist-get (elistan-finding-data f) :verdict) 'always-false))
     (should (eq (plist-get (elistan-finding-data f) :dead-branch) 'then))))
 
+(ert-deftest elistan-walk-setq-reassign-invalidates-narrowing ()
+  "Reassigning a non-lexical variable clears a prior narrowing (no false branch).
+`et-special' is narrowed to nil by the `unless', then `setq' reassigns it; the
+later test must not be read as provably nil."
+  (let ((fs (elistan-walk-defun
+             '(defun et-spec ()
+                (unless et-special
+                  (setq et-special (compute))
+                  (if et-special 'a 'b))))))
+    (should-not (elistan-walk-test--of fs 'dead-branch))))
+
+(ert-deftest elistan-walk-lambda-body-dead-branch ()
+  "A provably dead branch inside a lambda body is reported."
+  (let* ((fs (elistan-walk-defun
+              '(defun et-lam (xs)
+                 (mapcar (lambda (x)
+                           (let ((n (length x)))   ; n : integer
+                             (if (stringp n) 1 2))) ; then is dead
+                         xs))))
+         (f (elistan-walk-test--of fs 'dead-branch)))
+    (should f)
+    (should (eq (plist-get (elistan-finding-data f) :dead-branch) 'then))))
+
+(ert-deftest elistan-walk-lambda-captured-var-not-flagged ()
+  "A captured variable is `unknown' inside a lambda (no false dead branch)."
+  (let* ((fs (elistan-walk-defun
+              '(defun et-cap ()
+                 (let ((s "hi"))               ; string in the enclosing scope
+                   (lambda () (if (integerp s) 1 2))))))  ; captured -> unknown
+         (f (elistan-walk-test--of fs 'dead-branch)))
+    (should-not f)))
+
+(ert-deftest elistan-walk-lambda-call-mismatch ()
+  "A provably incompatible call inside a lambda body is reported."
+  (elistan-walk-test--declare 'et-need-str2 '(function (string) integer))
+  (let* ((fs (elistan-walk-defun
+              '(defun et-uses (xs)
+                 (mapcar (lambda (x)
+                           (let ((n (length x))) ; integer
+                             (et-need-str2 n)))   ; expects string -> mismatch
+                         xs))))
+         (f (elistan-walk-test--of fs 'call-type-mismatch)))
+    (should f)
+    (should (equal (plist-get (elistan-finding-data f) :expected) 'string))
+    (should (equal (plist-get (elistan-finding-data f) :actual) 'integer))))
+
 (ert-deftest elistan-walk-return-mismatch ()
   "A body type incompatible with the declared return is reported (category 3)."
   (elistan-walk-test--declare 'et-h '(function (string) integer))
