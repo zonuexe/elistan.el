@@ -79,10 +79,13 @@ unless it reduces to (1).
 - **Call findings only against author-written contracts (ADR-0014):** builtin
   type databases drive narrowing and result typing but never flag a call, since
   Emacs builtins are leniently polymorphic and DB types are incomplete.
-- **Hardened on real codebases:** swept Elsa + elpa packages, fixing crash and
-  false-positive classes (and/or & condition-case mutation carry, nil-binding
-  accumulators, lexical-only tracking of `setq`, macroexpand failure). Posture
-  holds: remaining findings on elpa are genuine dead code.
+- **Hardened on real codebases:** swept Elsa + the full elpa set (202 packages,
+  739 files) with Elsa's 327 builtin types loaded. Fixed every crash, hang, and
+  false-positive class found — `never`-value, and/or & condition-case mutation
+  carry, nil-binding accumulators, lexical-only `setq` tracking, `(quote nil)`,
+  `(const nil)` quirks, macroexpand failure, plus a work budget and type-size
+  cap so no input can hang. Final: **739 files, 19 findings, 0 crashes, ~6s** —
+  every finding verified to be genuine dead code (zero false positives).
 - **typespec helper promotions (coordination):** make `--type-compatible-p` (the
   gradual-consistency check) and `--split-argspecs` public, per ADR-0003.
 - **noreturn `never` specs (coordination):** noreturn functions (`error`,
