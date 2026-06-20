@@ -113,6 +113,41 @@
                 (t 3)))))
     'dead-branch)))
 
+(ert-deftest elistan-walk-closure-mutation-no-false-positive ()
+  "A variable `setq'-mutated inside a closure must not be assumed constant."
+  ;; `found' is bound to nil, then mutated inside a lambda passed to `mapc'
+  ;; (whose body the walker does not descend into).  It must NOT be treated as
+  ;; always-nil, or `(if found ...)' would be a false dead-branch.
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-closure (items)
+        (let ((found nil))
+          (mapc (lambda (x) (when x (setq found x))) items)
+          (if found 1 2))))
+    'dead-branch)))
+
+(ert-deftest elistan-walk-destructive-op-clears-narrowing ()
+  "An in-place destructive op clears its variable's narrowing."
+  ;; Mirrors `(while (consp x) ... (!cdr x) ... (if (consp x) ...))' from real
+  ;; code: after the mutation, `(consp x)' is no longer known to hold, so the
+  ;; second test must NOT be flagged as a dead branch.
+  (should-not
+   (elistan-walk-test--of
+    (elistan-walk-defun
+     '(defun et-destr (x)
+        (while (consp x)
+          (!cdr x)
+          (if (consp x) 1 2))))
+    'dead-branch)))
+
+(ert-deftest elistan-walk-improper-list-robustness ()
+  "Improper (dotted) sub-forms must not crash the walker."
+  (should (listp (elistan-walk-defun
+                  '(defun et-dotted (x) (foo (x . y) '(a . b))))))
+  (should (listp (elistan-walk-defun
+                  '(defun et-dotted2 (f) (-lambda ((head . tail)) (cons head tail)))))))
+
 (ert-deftest elistan-walk-non-defun ()
   "Non-function-defining top-level forms are out of scope."
   (should-not (elistan-walk-form '(defvar foo nil)))

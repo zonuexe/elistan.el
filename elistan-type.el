@@ -64,38 +64,48 @@ TODO: promote to typespec as the public gradual-consistency relation."
    ((or (elistan-type-dynamic-p value) (elistan-type-dynamic-p expected)) t)
    (t (not (elistan-type-never-p (elistan-type-meet value expected))))))
 
+;; The typespec foundation is still maturing and can error on some inputs (e.g.
+;; intersecting two half-bounded integer ranges).  A checker must never crash on
+;; valid source, so every call into typespec here is guarded with a conservative
+;; fallback.  Over-approximating (keeping a wider type) is always safe: it can
+;; only lose precision, never create a false positive.
+
+(defun elistan-type--eval (type)
+  "Normalise TYPE via typespec, or return it unchanged if typespec errors."
+  (condition-case nil (typespec-eval type) (error type)))
+
 (defun elistan-type-meet (a b)
   "Intersect types A and B (the true-branch refinement operation).
 The dynamic narrows to the other operand."
   (cond
    ((elistan-type-dynamic-p a) b)
    ((elistan-type-dynamic-p b) a)
-   (t (typespec-eval-op-and (list a b)))))
+   (t (condition-case nil (typespec-eval-op-and (list a b)) (error a)))))
 
 (defun elistan-type-diff (a b)
   "Subtract type B from type A (the false-branch refinement operation).
 Subtracting from the dynamic leaves it dynamic."
   (if (elistan-type-dynamic-p a)
       a
-    (typespec-eval-op-diff a b)))
+    (condition-case nil (typespec-eval-op-diff a b) (error a))))
 
 (defun elistan-type-union (&rest types)
   "Return the union of TYPES."
-  (typespec-eval-simplify-or types))
+  (condition-case nil (typespec-eval-simplify-or types) (error 'unknown)))
 
 (defun elistan-type-never-p (type)
   "Return non-nil if TYPE is the bottom type `never' (after normalisation)."
-  (eq (typespec-eval type) 'never))
+  (eq (elistan-type--eval type) 'never))
 
 (defun elistan-type-always-nil-p (type)
   "Return non-nil if a TYPE-typed value is provably always nil."
-  (let ((ty (typespec-eval type)))
+  (let ((ty (elistan-type--eval type)))
     (or (eq ty 'null)
         (equal ty '(const nil)))))
 
 (defun elistan-type-never-nil-p (type)
   "Return non-nil if a TYPE-typed value is provably never nil (always truthy)."
-  (let ((ty (typespec-eval type)))
+  (let ((ty (elistan-type--eval type)))
     (and (not (elistan-type-dynamic-p ty))
          (not (elistan-type-top-p ty))
          (not (memq ty '(null never)))

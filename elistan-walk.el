@@ -44,6 +44,44 @@
 (defvar elistan-walk--findings nil
   "Accumulator (dynamically bound per defun walk) of `elistan-finding' values.")
 
+(defconst elistan-walk--destructive-ops
+  '(setf setq-default push pop cl-incf cl-decf incf decf cl-pushnew pushnew
+    !cdr !cons)
+  "Operators that mutate a bare-variable argument in place.
+After such a call the argument's narrowing is cleared (set to `unknown'),
+covering destructive forms that stay unexpanded when a library is not loaded.
+Forms that macroexpand to `setq' (the loaded `push'/`setf'/… in most cases) are
+handled by the `setq' path instead.")
+
+(defvar elistan-walk--closure-vars nil
+  "Bare variables `setq'-assigned inside a lambda within the current defun.
+Such variables are captured by a closure we do not analyse, so their value at
+any read is uncertain; they are kept at `unknown' to avoid false positives.")
+
+(defun elistan-walk--bind (env var type)
+  "Bind VAR to TYPE in ENV, or to `unknown' if VAR is closure-mutated."
+  (elistan-env-set env var
+                   (if (memq (elistan-walk--bare var) elistan-walk--closure-vars)
+                       'unknown type)))
+
+(defun elistan-walk--closure-assigned-vars (form)
+  "Return the bare variables `setq'-assigned inside a lambda within FORM."
+  (let (vars)
+    (cl-labels ((scan (f in-lambda)
+                  (when (and (consp f) (not (eq (car-safe f) 'quote)))
+                    (let ((in (or in-lambda
+                                  (memq (car-safe f) '(lambda closure)))))
+                      (when (and in (eq (car-safe f) 'setq))
+                        (let ((p (cdr f)))
+                          (while (and (consp p) (consp (cdr p)))
+                            (when (symbolp (car p))
+                              (push (elistan-walk--bare (car p)) vars))
+                            (setq p (cddr p)))))
+                      (let ((x f))
+                        (while (consp x) (scan (car x) in) (setq x (cdr x))))))))
+      (scan form nil))
+    (delete-dups vars)))
+
 (defun elistan-walk--emit (category pos data &optional severity)
   "Record a finding of CATEGORY at POS with DATA (and optional SEVERITY)."
   (push (elistan-finding-create :category category :pos pos
@@ -230,7 +268,7 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
              (ir (elistan-walk-type init (if sequential work-env env))))
         (when sequential (setq work-env (cdr ir)))
         (push var vars)
-        (setq work-env (elistan-env-set work-env var (car ir)))))
+        (setq work-env (elistan-walk--bind work-env var (car ir)))))
     (let* ((br (elistan-walk--progn body work-env))
            (be (cdr br)))
       ;; Local bindings do not leak: restore the outer type of each bound var.
@@ -241,24 +279,27 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
 (defun elistan-walk--setq (pairs env)
   "Walk `(setq PAIRS...)' under ENV, rebinding each assigned variable."
   (let ((e env) (ty 'null) (p pairs))
-    (while (and p (cdr p))
+    (while (and (consp p) (consp (cdr p)))
       (let ((r (elistan-walk-type (cadr p) e)))
         (setq ty (car r)
-              e (elistan-env-set (cdr r) (car p) ty)
+              e (elistan-walk--bind (cdr r) (car p) ty)
               p (cddr p))))
     (cons ty e)))
 
 (defun elistan-walk--assigned-vars (form)
-  "Return the list of variables assigned by `setq' anywhere within FORM."
+  "Return the list of variables assigned by `setq' anywhere within FORM.
+Tolerates improper (dotted) lists and does not descend into quoted data."
   (let (vars)
     (cl-labels ((scan (f)
-                  (when (consp f)
-                    (when (eq (car f) 'setq)
+                  (when (and (consp f) (not (eq (car-safe f) 'quote)))
+                    (when (eq (car-safe f) 'setq)
                       (let ((p (cdr f)))
-                        (while (and p (cdr p))
+                        (while (and (consp p) (consp (cdr p)))
                           (when (symbolp (car p)) (push (car p) vars))
                           (setq p (cddr p)))))
-                    (dolist (x f) (scan x)))))
+                    ;; Walk elements, tolerating an improper tail.
+                    (let ((x f))
+                      (while (consp x) (scan (car x)) (setq x (cdr x)))))))
       (scan form))
     (delete-dups vars)))
 
@@ -326,19 +367,29 @@ guard return types as `boolean'; anything typespec cannot type is `unknown'."
   (if (symbol-with-pos-p sym) (bare-symbol sym) sym))
 
 (defun elistan-walk--call (form env)
-  "Walk a function call FORM under ENV: type args, check them, type the result."
-  (let ((env2 env) (arg-types nil) (arg-forms (cdr form)))
-    (dolist (a arg-forms)
-      (let ((r (elistan-walk-type a env2)))
+  "Walk a function call FORM under ENV: type args, check them, type the result.
+Tolerates an improper (dotted) FORM by iterating only its proper prefix."
+  (let ((env2 env) (arg-types nil) (arg-forms nil) (tail (cdr form)))
+    (while (consp tail)
+      (let ((r (elistan-walk-type (car tail) env2)))
         (push (car r) arg-types)
-        (setq env2 (cdr r))))
-    (setq arg-types (nreverse arg-types))
-    (let ((funspec (elistan-source-function-spec (elistan-walk--bare (car form)))))
-      (if (not funspec)
-          (cons 'unknown env2)
-        (progn
-          (elistan-walk--check-args (car form) funspec arg-types arg-forms)
-          (cons (elistan-walk--call-result funspec arg-types) env2))))))
+        (push (car tail) arg-forms)
+        (setq env2 (cdr r)))
+      (setq tail (cdr tail)))
+    (setq arg-types (nreverse arg-types)
+          arg-forms (nreverse arg-forms))
+    (let ((fn (elistan-walk--bare (car form))))
+      ;; A destructive op invalidates the narrowing of its variable arguments.
+      (when (memq fn elistan-walk--destructive-ops)
+        (dolist (af arg-forms)
+          (when (symbolp af)
+            (setq env2 (elistan-env-set env2 (elistan-walk--bare af) 'unknown)))))
+      (let ((funspec (elistan-source-function-spec fn)))
+        (if (not funspec)
+            (cons 'unknown env2)
+          (progn
+            (elistan-walk--check-args (car form) funspec arg-types arg-forms)
+            (cons (elistan-walk--call-result funspec arg-types) env2)))))))
 
 ;;; Entry points
 
@@ -356,11 +407,11 @@ guard return types as `boolean'; anything typespec cannot type is `unknown'."
        ((eq p '&rest) (setq state 'rest))
        ((memq p '(&key &allow-other-keys)) (setq state 'ignore))
        (t (pcase state
-            ('required (setq env (elistan-env-set env p (or (nth ri req) 'unknown)))
+            ('required (setq env (elistan-walk--bind env p (or (nth ri req) 'unknown)))
                        (setq ri (1+ ri)))
-            ('optional (setq env (elistan-env-set env p (or (nth oi opt) 'unknown)))
+            ('optional (setq env (elistan-walk--bind env p (or (nth oi opt) 'unknown)))
                        (setq oi (1+ oi)))
-            ('rest (setq env (elistan-env-set
+            ('rest (setq env (elistan-walk--bind
                               env p (if rest (list 'list rest) 'list))))))))
     env))
 
@@ -373,8 +424,10 @@ guard return types as `boolean'; anything typespec cannot type is `unknown'."
       (`(,(or 'defun 'defsubst 'cl-defun) ,name ,arglist . ,body)
        (let* ((elistan-walk--findings nil)
               (funspec (elistan-source-function-spec (elistan-walk--bare name)))
-              (env (elistan-walk--seed-env arglist funspec))
               (expanded (macroexpand-all (cons 'progn body)))
+              (elistan-walk--closure-vars
+               (elistan-walk--closure-assigned-vars expanded))
+              (env (elistan-walk--seed-env arglist funspec))
               (body-type (car (elistan-walk-type expanded env))))
          (when funspec
            (let ((declared (elistan-source-return funspec)))
