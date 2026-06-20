@@ -517,7 +517,11 @@ guard return types as `boolean'; anything typespec cannot type is `unknown'."
                              (rest rest)
                              (t nil))))
          (when (and expected (not (elistan-type-consistent-p at expected)))
-           (elistan-walk--emit 'call-type-mismatch (elistan-walk--pos af)
+           ;; A literal argument (number/string) carries no source position, so
+           ;; fall back to the call's function symbol — otherwise the finding is
+           ;; dropped as position-less and a real mismatch goes unreported.
+           (elistan-walk--emit 'call-type-mismatch
+                               (or (elistan-walk--pos af) (elistan-walk--pos fn))
                                (list :function (elistan-walk--bare fn)
                                      :arg-index idx :expected expected :actual at))))
        (setq idx (1+ idx)))
