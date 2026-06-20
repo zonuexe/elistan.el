@@ -24,27 +24,30 @@
 (require 'ert)
 (require 'elistan-struct)
 (require 'elistan-recognise)
+(require 'elistan-type)
 
 (ert-deftest elistan-struct-defstruct ()
   "cl-defstruct registers predicate, constructor, copier and accessors."
   (with-temp-buffer
     (insert "(cl-defstruct foo aa bb)\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'foo-p db)) '(function (t) (:guard! foo))))
-      (should (equal (cdr (assq 'make-foo db)) '(function (&rest mixed) foo)))
-      (should (equal (cdr (assq 'foo-aa db)) '(function (foo) mixed)))
-      (should (equal (cdr (assq 'foo-bb db)) '(function (foo) mixed)))
-      (should (equal (cdr (assq 'copy-foo db)) '(function (foo) foo))))))
+      (should (equal (cdr (assq 'foo-p db)) '(function (t) (:guard! (:class foo)))))
+      (should (equal (cdr (assq 'make-foo db)) '(function (&rest mixed) (:class foo))))
+      (should (equal (cdr (assq 'foo-aa db)) '(function ((:class foo)) mixed)))
+      (should (equal (cdr (assq 'foo-bb db)) '(function ((:class foo)) mixed)))
+      (should (equal (cdr (assq 'copy-foo db))
+                     '(function ((:class foo)) (:class foo)))))))
 
 (ert-deftest elistan-struct-defstruct-options ()
   "A defstruct with custom :conc-name / :copier names is honoured."
   (with-temp-buffer
     (insert "(cl-defstruct (bar (:conc-name bar->) (:copier clone-bar)) xx)\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'bar-p db)) '(function (t) (:guard! bar))))
+      (should (equal (cdr (assq 'bar-p db)) '(function (t) (:guard! (:class bar)))))
       (should (assq 'bar->xx db))
       ;; The custom copier name is registered; the default copy-bar is not.
-      (should (equal (cdr (assq 'clone-bar db)) '(function (bar) bar)))
+      (should (equal (cdr (assq 'clone-bar db))
+                     '(function ((:class bar)) (:class bar))))
       (should-not (assq 'copy-bar db)))))
 
 (ert-deftest elistan-struct-defclass ()
@@ -52,9 +55,9 @@
   (with-temp-buffer
     (insert "(defclass baz () ((x :initarg :x :accessor baz-x)) :abstract nil)\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'baz-p db)) '(function (t) (:guard! baz))))
-      (should (equal (cdr (assq 'baz db)) '(function (&rest mixed) baz)))
-      (should (equal (cdr (assq 'baz-x db)) '(function (baz) mixed))))))
+      (should (equal (cdr (assq 'baz-p db)) '(function (t) (:guard! (:class baz)))))
+      (should (equal (cdr (assq 'baz db)) '(function (&rest mixed) (:class baz))))
+      (should (equal (cdr (assq 'baz-x db)) '(function ((:class baz)) mixed))))))
 
 (ert-deftest elistan-struct-defclass-reader ()
   "A defclass slot `:reader' registers a reader like `:accessor' does."
@@ -63,10 +66,11 @@
             " ((x :type integer :reader rdr-x)"
             "  (y :type string :accessor rdr-y :reader rdr-get-y)))\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'rdr-x db)) '(function (rdr) integer)))
+      (should (equal (cdr (assq 'rdr-x db)) '(function ((:class rdr)) integer)))
       ;; A slot with both :accessor and :reader registers both.
-      (should (equal (cdr (assq 'rdr-y db)) '(function (rdr) string)))
-      (should (equal (cdr (assq 'rdr-get-y db)) '(function (rdr) string))))))
+      (should (equal (cdr (assq 'rdr-y db)) '(function ((:class rdr)) string)))
+      (should (equal (cdr (assq 'rdr-get-y db))
+                     '(function ((:class rdr)) string))))))
 
 (ert-deftest elistan-struct-defstruct-slot-type ()
   "A defstruct slot `:type' (with a non-nil default) is the accessor return."
@@ -77,12 +81,12 @@
             " (cc t :type boolean)"
             " dd)\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'qux-aa db)) '(function (qux) integer)))
+      (should (equal (cdr (assq 'qux-aa db)) '(function ((:class qux)) integer)))
       ;; :type after another keyword is still found.
-      (should (equal (cdr (assq 'qux-bb db)) '(function (qux) string)))
-      (should (equal (cdr (assq 'qux-cc db)) '(function (qux) boolean)))
+      (should (equal (cdr (assq 'qux-bb db)) '(function ((:class qux)) string)))
+      (should (equal (cdr (assq 'qux-cc db)) '(function ((:class qux)) boolean)))
       ;; No :type stays `mixed'.
-      (should (equal (cdr (assq 'qux-dd db)) '(function (qux) mixed))))))
+      (should (equal (cdr (assq 'qux-dd db)) '(function ((:class qux)) mixed))))))
 
 (ert-deftest elistan-struct-defstruct-nil-default-widens ()
   "A nil (or absent) default widens a non-nil `:type' with nil.
@@ -93,10 +97,11 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
             " (a nil :type integer)"   ; explicit nil default
             " (b :type integer))\n")   ; default value is `:type' (a symbol)
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'opt-a db)) '(function (opt) (or integer null))))
+      (should (equal (cdr (assq 'opt-a db))
+                     '(function ((:class opt)) (or integer null))))
       ;; `(b :type integer)' parses as default `:type' (non-nil) so `b' is not
       ;; widened; the bogus keyword leaves no real `:type', hence `mixed'.
-      (should (equal (cdr (assq 'opt-b db)) '(function (opt) mixed))))))
+      (should (equal (cdr (assq 'opt-b db)) '(function ((:class opt)) mixed))))))
 
 (ert-deftest elistan-struct-defstruct-docstring ()
   "A leading docstring in the body is skipped, not read as a slot."
@@ -105,8 +110,8 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
             " \"Doc string for the struct.\""
             " (n 0 :type integer) m)\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'sess-n db)) '(function (sess) integer)))
-      (should (equal (cdr (assq 'sess-m db)) '(function (sess) mixed)))
+      (should (equal (cdr (assq 'sess-n db)) '(function ((:class sess)) integer)))
+      (should (equal (cdr (assq 'sess-m db)) '(function ((:class sess)) mixed)))
       ;; The docstring produced no spurious accessor.
       (should-not (assq 'sess-Doc db)))))
 
@@ -117,8 +122,8 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
             " ((x :initarg :x :type string :accessor cls-x)"
             "  (y :initarg :y :accessor cls-y)))\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'cls-x db)) '(function (cls) string)))
-      (should (equal (cdr (assq 'cls-y db)) '(function (cls) mixed)))))
+      (should (equal (cdr (assq 'cls-x db)) '(function ((:class cls)) string)))
+      (should (equal (cdr (assq 'cls-y db)) '(function ((:class cls)) mixed)))))
   ;; An explicit `:initform nil' widens the type (absent :initform = unbound,
   ;; which is not nil, so it does not widen).
   (with-temp-buffer
@@ -126,8 +131,9 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
             " ((aa :type integer :initform nil :accessor clz-aa)"
             "  (bb :type integer :accessor clz-bb)))\n")
     (let ((db (elistan-struct-parse-buffer)))
-      (should (equal (cdr (assq 'clz-aa db)) '(function (clz) (or integer null))))
-      (should (equal (cdr (assq 'clz-bb db)) '(function (clz) integer))))))
+      (should (equal (cdr (assq 'clz-aa db))
+                     '(function ((:class clz)) (or integer null))))
+      (should (equal (cdr (assq 'clz-bb db)) '(function ((:class clz)) integer))))))
 
 (ert-deftest elistan-struct-translate-type ()
   "The slot-type translator is precise where safe and `mixed' otherwise."
@@ -163,11 +169,38 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
   (should (equal (elistan-struct--translate-type '(and integer string)) 'mixed)))
 
 (ert-deftest elistan-struct-predicate-narrows ()
-  "A struct predicate narrows the tested variable to the struct type."
-  (let ((elistan-source-local '((foo-p . (function (t) (:guard! foo)))))
+  "A struct predicate narrows the tested variable to the class type."
+  (let ((elistan-source-local '((foo-p . (function (t) (:guard! (:class foo))))))
         (env (elistan-env-make '((x . unknown)))))
     (let ((r (elistan-recognise '(foo-p x) env)))
-      (should (equal (cadr (assq 'x r)) 'foo)))))
+      (should (equal (cadr (assq 'x r)) '(:class foo))))))
+
+(ert-deftest elistan-struct-hierarchy ()
+  "The class hierarchy is read from defstruct :include and defclass parents."
+  (with-temp-buffer
+    (insert "(cl-defstruct animal a)\n"
+            "(cl-defstruct (dog (:include animal)) d)\n"
+            "(defclass widget () ())\n"
+            "(defclass button (widget clickable) ())\n")
+    (let ((h (elistan-struct-parse-hierarchy)))
+      (should (equal (cdr (assq 'dog h)) '(animal)))
+      (should (equal (cdr (assq 'button h)) '(widget clickable)))
+      ;; A root struct/class with no parent is not listed.
+      (should-not (assq 'animal h))
+      (should-not (assq 'widget h)))))
+
+(ert-deftest elistan-struct-subclass-accepted ()
+  "With the hierarchy supplied, a subclass instance is accepted where the
+superclass is wanted, and the predicate narrows a superclass var to the
+subclass."
+  (let ((typespec-eval-types-class-parents '((dog animal))))
+    ;; A `(:class dog)' value is consistent with a `(:class animal)' parameter.
+    (should (elistan-type-consistent-p '(:class dog) '(:class animal)))
+    ;; Narrowing a `(:class animal)' var with `(dog-p x)' yields `(:class dog)'.
+    (should (equal (elistan-type-meet '(:class animal) '(:class dog))
+                   '(:class dog)))
+    ;; Unrelated classes are still accepted (no false positive).
+    (should (elistan-type-consistent-p '(:class cat) '(:class animal)))))
 
 (provide 'elistan-struct-test)
 ;;; elistan-struct-test.el ends here

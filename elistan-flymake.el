@@ -68,6 +68,9 @@
                                        (elistan-elsa-parse-buffer)
                                        (elistan-struct-parse-buffer)
                                        elistan-source-local))
+         (typespec-eval-types-class-parents
+          (append (elistan-struct-parse-hierarchy)
+                  typespec-eval-types-class-parents))
          (forms (save-excursion
                   (goto-char (point-min))
                   (elistan-batch--read-buffer)))

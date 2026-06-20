@@ -75,6 +75,10 @@ Assumes the analysed buffer is current (for position lookup)."
                                          (elistan-elsa-parse-buffer)
                                          (elistan-struct-parse-buffer)
                                          elistan-source-local))
+           ;; In-file class hierarchy feeds typespec's `(:class …)' subtyping.
+           (typespec-eval-types-class-parents
+            (append (elistan-struct-parse-hierarchy)
+                    typespec-eval-types-class-parents))
            ;; Skip findings with no source position: they are macro-introduced
            ;; and not user-actionable (the editor driver skips them likewise).
            (findings (seq-filter #'elistan-finding-pos

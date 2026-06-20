@@ -116,6 +116,14 @@ result from being treated as provably non-nil (which would wrongly flag
 excludes both TY and nil, so genuine mismatches still surface."
   (if (memq ty '(mixed null)) ty (list 'or ty 'null)))
 
+(defun elistan-struct--class-type (name)
+  "Return the typespec class type `(:class NAME)' for class/struct NAME.
+typespec gives `(:class …)' static subtyping from the hierarchy supplied via
+`typespec-eval-types-class-parents' (see `elistan-struct-parse-hierarchy'), so
+a subclass instance is accepted where a superclass is wanted while unrelated
+classes stay non-disjoint (no false positive)."
+  (list :class name))
+
 (defun elistan-struct--defstruct (form)
   "Return an alist of generated NAME -> funspec for a `cl-defstruct' FORM."
   (pcase form
@@ -135,14 +143,15 @@ excludes both TY and nil, so genuine mismatches still surface."
             (copier (let ((c (elistan-struct--option options :copier)))
                       (if (and c (not (eq c t))) c
                         (intern (format "copy-%s" name)))))
+            (ctype (elistan-struct--class-type name))
             (acc nil))
        (when (and name (symbolp name))
          (when (and pred (symbolp pred))
-           (push (cons pred (list 'function '(t) (list :guard! name))) acc))
+           (push (cons pred (list 'function '(t) (list :guard! ctype))) acc))
          (when (and ctor (symbolp ctor))
-           (push (cons ctor (list 'function '(&rest mixed) name)) acc))
+           (push (cons ctor (list 'function '(&rest mixed) ctype)) acc))
          (when (and copier (symbolp copier))
-           (push (cons copier (list 'function (list name) name)) acc))
+           (push (cons copier (list 'function (list ctype) ctype)) acc))
          (dolist (slot slots)
            ;; `slots' may lead with a docstring (a string), which `--slot-name'
            ;; maps to nil; the guard skips it (and anything non-symbol-named).
@@ -161,7 +170,7 @@ excludes both TY and nil, so genuine mismatches still surface."
                  (when nil-default
                    (setq ty (elistan-struct--nilable ty)))
                  (push (cons (intern (concat conc (symbol-name sn)))
-                             (list 'function (list name) ty))
+                             (list 'function (list ctype) ty))
                        acc))))))
        (nreverse acc)))
     (_ nil)))
@@ -171,11 +180,12 @@ excludes both TY and nil, so genuine mismatches still surface."
   (pcase form
     (`(defclass ,name ,_parents ,slots . ,_)
      (when (and name (symbolp name))
-       (let ((acc (list
-                   (cons (intern (format "%s-p" name))
-                         (list 'function '(t) (list :guard! name)))
-                   ;; EIEIO allows `(NAME ...)' as a constructor.
-                   (cons name (list 'function '(&rest mixed) name)))))
+       (let* ((ctype (elistan-struct--class-type name))
+              (acc (list
+                    (cons (intern (format "%s-p" name))
+                          (list 'function '(t) (list :guard! ctype)))
+                    ;; EIEIO allows `(NAME ...)' as a constructor.
+                    (cons name (list 'function '(&rest mixed) ctype)))))
          ;; Slots may declare a :type and one or more reader functions.
          (dolist (slot slots)
            (when (consp slot)
@@ -193,8 +203,24 @@ excludes both TY and nil, so genuine mismatches still surface."
                (dolist (key '(:accessor :reader))
                  (let ((fn (plist-get plist key)))
                    (when (and fn (symbolp fn))
-                     (push (cons fn (list 'function (list name) ty)) acc)))))))
+                     (push (cons fn (list 'function (list ctype) ty)) acc)))))))
          (nreverse acc))))
+    (_ nil)))
+
+(defun elistan-struct--parents (form)
+  "Return `(CHILD PARENT...)' for a defstruct `:include' / defclass FORM, or nil.
+Used to build the class hierarchy for `(:class …)' subtyping."
+  (pcase form
+    (`(,(or 'cl-defstruct 'defstruct) ,head . ,_)
+     (let* ((name (if (consp head) (car head) head))
+            (inc (and (consp head)
+                      (elistan-struct--option (cdr head) :include))))
+       ;; `:include' takes a single parent struct.
+       (and name (symbolp name) inc (symbolp inc) (list name inc))))
+    (`(defclass ,name ,parents . ,_)
+     (and name (symbolp name) (proper-list-p parents)
+          (let ((ps (seq-filter #'symbolp parents)))
+            (and ps (cons name ps)))))
     (_ nil)))
 
 (defun elistan-struct-parse-buffer ()
@@ -211,6 +237,20 @@ Return an alist of generated NAME -> typespec funspec."
                                    (elistan-struct--defclass form)))))
         ((end-of-file invalid-read-syntax) nil)))
     result))
+
+(defun elistan-struct-parse-hierarchy ()
+  "Scan the current buffer for the class hierarchy.
+Return an alist of CLASS -> (PARENT...) from `cl-defstruct' `:include' and
+`defclass' parent lists, suitable for `typespec-eval-types-class-parents'."
+  (let ((result nil))
+    (save-excursion
+      (goto-char (point-min))
+      (condition-case nil
+          (while t
+            (let ((cell (elistan-struct--parents (read (current-buffer)))))
+              (when cell (push (cons (car cell) (cdr cell)) result))))
+        ((end-of-file invalid-read-syntax) nil)))
+    (nreverse result)))
 
 (provide 'elistan-struct)
 ;;; elistan-struct.el ends here
