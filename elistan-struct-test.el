@@ -53,6 +53,18 @@
       (should (equal (cdr (assq 'baz db)) '(function (&rest mixed) baz)))
       (should (equal (cdr (assq 'baz-x db)) '(function (baz) mixed))))))
 
+(ert-deftest elistan-struct-defclass-reader ()
+  "A defclass slot `:reader' registers a reader like `:accessor' does."
+  (with-temp-buffer
+    (insert "(defclass rdr ()"
+            " ((x :type integer :reader rdr-x)"
+            "  (y :type string :accessor rdr-y :reader rdr-get-y)))\n")
+    (let ((db (elistan-struct-parse-buffer)))
+      (should (equal (cdr (assq 'rdr-x db)) '(function (rdr) integer)))
+      ;; A slot with both :accessor and :reader registers both.
+      (should (equal (cdr (assq 'rdr-y db)) '(function (rdr) string)))
+      (should (equal (cdr (assq 'rdr-get-y db)) '(function (rdr) string))))))
+
 (ert-deftest elistan-struct-defstruct-slot-type ()
   "A defstruct slot `:type' (with a non-nil default) is the accessor return."
   (with-temp-buffer

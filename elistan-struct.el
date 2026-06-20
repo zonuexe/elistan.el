@@ -178,11 +178,10 @@ excludes both TY and nil, so genuine mismatches still surface."
                          (list 'function '(t) (list :guard! name)))
                    ;; EIEIO allows `(NAME ...)' as a constructor.
                    (cons name (list 'function '(&rest mixed) name)))))
-         ;; Slots may declare an :accessor and a :type.
+         ;; Slots may declare a :type and one or more reader functions.
          (dolist (slot slots)
            (when (consp slot)
              (let* ((plist (cdr slot))
-                    (acc-name (plist-get plist :accessor))
                     (ty (elistan-struct--translate-type (plist-get plist :type)))
                     ;; An explicit `:initform nil' leaves the slot nil-valued; an
                     ;; absent :initform leaves it *unbound* (access errors rather
@@ -190,8 +189,13 @@ excludes both TY and nil, so genuine mismatches still surface."
                     (init (plist-member plist :initform)))
                (when (and init (null (cadr init)))
                  (setq ty (elistan-struct--nilable ty)))
-               (when (and acc-name (symbolp acc-name))
-                 (push (cons acc-name (list 'function (list name) ty)) acc)))))
+               ;; `:accessor' and `:reader' both generate a reader `(NAME obj)'
+               ;; of the slot type (`:accessor' is additionally setf-able; the
+               ;; read shape is identical).
+               (dolist (key '(:accessor :reader))
+                 (let ((fn (plist-get plist key)))
+                   (when (and fn (symbolp fn))
+                     (push (cons fn (list 'function (list name) ty)) acc)))))))
          (nreverse acc))))
     (_ nil)))
 
