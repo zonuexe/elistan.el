@@ -77,24 +77,50 @@ TODO: promote to typespec as the public gradual-consistency relation."
   "Normalise TYPE via typespec, or return it unchanged if typespec errors."
   (condition-case nil (typespec-eval type) (error type)))
 
+(defconst elistan-type--max-nodes 200
+  "Types larger than this collapse to `unknown'.
+Bounds the cost of type operations so a huge accumulated type (e.g. a union
+built up across a giant generated function) cannot blow up; over-approximating
+to the dynamic is always safe.")
+
+(defun elistan-type--small-p (type)
+  "Return non-nil if TYPE has at most `elistan-type--max-nodes' cons cells.
+Iterative and improper-list-safe."
+  (let ((stack (list type)) (n 0))
+    (catch 'big
+      (while stack
+        (let ((x (pop stack)))
+          (while (consp x)
+            (when (> (setq n (1+ n)) elistan-type--max-nodes) (throw 'big nil))
+            (push (car x) stack)
+            (setq x (cdr x)))))
+      t)))
+
+(defun elistan-type--cap (type)
+  "Collapse TYPE to `unknown' when it is too large to operate on cheaply."
+  (if (elistan-type--small-p type) type 'unknown))
+
 (defun elistan-type-meet (a b)
   "Intersect types A and B (the true-branch refinement operation).
 The dynamic narrows to the other operand."
   (cond
    ((elistan-type-dynamic-p a) b)
    ((elistan-type-dynamic-p b) a)
-   (t (condition-case nil (typespec-eval-op-and (list a b)) (error a)))))
+   (t (elistan-type--cap
+       (condition-case nil (typespec-eval-op-and (list a b)) (error a))))))
 
 (defun elistan-type-diff (a b)
   "Subtract type B from type A (the false-branch refinement operation).
 Subtracting from the dynamic leaves it dynamic."
   (if (elistan-type-dynamic-p a)
       a
-    (condition-case nil (typespec-eval-op-diff a b) (error a))))
+    (elistan-type--cap
+     (condition-case nil (typespec-eval-op-diff a b) (error a)))))
 
 (defun elistan-type-union (&rest types)
   "Return the union of TYPES."
-  (condition-case nil (typespec-eval-simplify-or types) (error 'unknown)))
+  (elistan-type--cap
+   (condition-case nil (typespec-eval-simplify-or types) (error 'unknown))))
 
 (defun elistan-type-never-p (type)
   "Return non-nil if TYPE is the bottom type `never' (after normalisation)."

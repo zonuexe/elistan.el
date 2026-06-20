@@ -209,6 +209,12 @@
                   '(defun et-nl (n)
                      (named-let loop ((i 0)) (when (< i n) (loop (1+ i)))))))))
 
+(ert-deftest elistan-walk-huge-form-terminates ()
+  "A very large body terminates (work budget + type-size cap), not hangs."
+  ;; 5000 accumulating setqs would blow up the type of `acc' without the cap.
+  (let ((body (cons 'progn (make-list 5000 '(setq acc (cons 1 acc))))))
+    (should (listp (elistan-walk-defun (list 'defun 'et-huge '(acc) body))))))
+
 (ert-deftest elistan-walk-non-defun ()
   "Non-function-defining top-level forms are out of scope."
   (should-not (elistan-walk-form '(defvar foo nil)))

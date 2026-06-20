@@ -94,7 +94,9 @@ any read is uncertain; they are kept at `unknown' to avoid false positives.")
                               (push (elistan-walk--bare (car p)) vars))
                             (setq p (cddr p)))))
                       (let ((x f))
-                        (while (consp x) (scan (car x) in) (setq x (cdr x))))))))
+                        (while (consp x)
+                          (elistan-walk--tick)
+                          (scan (car x) in) (setq x (cdr x))))))))
       (scan form nil))
     (delete-dups vars)))
 
@@ -103,6 +105,17 @@ any read is uncertain; they are kept at `unknown' to avoid false positives.")
   (push (elistan-finding-create :category category :pos pos
                                 :severity (or severity :warning) :data data)
         elistan-walk--findings))
+
+(defvar elistan-walk--budget nil
+  "Remaining work budget for the current defun walk, or nil for unlimited.
+Bounds worst-case time so a pathological form — a huge macro-generated body, or
+a circular list from `#N=' read syntax — can never hang the checker.")
+
+(defmacro elistan-walk--tick ()
+  "Spend one unit of the analysis budget; abort the walk when it is exhausted."
+  '(when (and elistan-walk--budget
+              (< (setq elistan-walk--budget (1- elistan-walk--budget)) 0))
+     (throw 'elistan-walk--over nil)))
 
 (defun elistan-walk--pos (form)
   "Best-effort source position of FORM (via symbol-with-pos), or nil."
@@ -125,6 +138,7 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
 
 (defun elistan-walk-type (form env)
   "Return `(TYPE . ENV)' for FORM under ENV, emitting findings as a side effect."
+  (elistan-walk--tick)
   (cond
    ((null form) (cons 'null env))
    ((eq form t) (cons '(const t) env))
@@ -346,7 +360,9 @@ Tolerates improper (dotted) lists and does not descend into quoted data."
                           (setq p (cddr p)))))
                     ;; Walk elements, tolerating an improper tail.
                     (let ((x f))
-                      (while (consp x) (scan (car x)) (setq x (cdr x)))))))
+                      (while (consp x)
+                        (elistan-walk--tick)
+                        (scan (car x)) (setq x (cdr x)))))))
       (scan form))
     (delete-dups vars)))
 
@@ -483,6 +499,10 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
     (pcase form
       (`(,(or 'defun 'defsubst 'cl-defun) ,name ,arglist . ,body)
        (let* ((elistan-walk--findings nil)
+              ;; Bound work budget: a pathological body (huge macro-generated
+              ;; form, circular literal) aborts with partial findings instead of
+              ;; hanging.  Normal defuns use a tiny fraction of this.
+              (elistan-walk--budget 600000)
               (funspec (elistan-source-function-spec (elistan-walk--bare name)))
               ;; Macro expansion can fail (e.g. `named-let' demands
               ;; lexical-binding, or a macro is not loaded); degrade to the
@@ -490,22 +510,23 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
               (expanded (condition-case nil
                             (let ((lexical-binding t))
                               (macroexpand-all (cons 'progn body)))
-                          (error (cons 'progn body))))
-              (elistan-walk--closure-vars
-               (elistan-walk--closure-assigned-vars expanded))
-              (elistan-walk--lexical-vars (elistan-walk--arglist-vars arglist))
-              (env (elistan-walk--seed-env arglist funspec))
-              (body-type (car (elistan-walk-type expanded env))))
-         (when funspec
-           (let ((declared (elistan-source-return funspec)))
-             (when (and declared
-                        (not (memq (car-safe declared) '(:guard :guard! :assert)))
-                        (not (eq declared 'unknown))
-                        (not (elistan-type-never-p body-type))
-                        (not (elistan-type-dynamic-p body-type))
-                        (not (elistan-type-consistent-p body-type declared)))
-               (elistan-walk--emit 'return-type-mismatch (elistan-walk--pos name)
-                                   (list :declared declared :actual body-type)))))
+                          (error (cons 'progn body)))))
+         (catch 'elistan-walk--over
+           (let* ((elistan-walk--closure-vars
+                   (elistan-walk--closure-assigned-vars expanded))
+                  (elistan-walk--lexical-vars (elistan-walk--arglist-vars arglist))
+                  (env (elistan-walk--seed-env arglist funspec))
+                  (body-type (car (elistan-walk-type expanded env))))
+             (when funspec
+               (let ((declared (elistan-source-return funspec)))
+                 (when (and declared
+                            (not (memq (car-safe declared) '(:guard :guard! :assert)))
+                            (not (eq declared 'unknown))
+                            (not (elistan-type-never-p body-type))
+                            (not (elistan-type-dynamic-p body-type))
+                            (not (elistan-type-consistent-p body-type declared)))
+                   (elistan-walk--emit 'return-type-mismatch (elistan-walk--pos name)
+                                       (list :declared declared :actual body-type)))))))
          (nreverse elistan-walk--findings)))
       (_ nil))))
 

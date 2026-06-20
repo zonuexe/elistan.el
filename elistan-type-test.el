@@ -62,5 +62,12 @@
   (should-not (elistan-type-never-nil-p 'unknown))
   (should-not (elistan-type-never-nil-p 'mixed)))
 
+(ert-deftest elistan-type-size-cap ()
+  "Oversized types collapse to `unknown' to bound operation cost."
+  (should (elistan-type--small-p '(or string integer)))
+  (let ((big (cons 'or (mapcar (lambda (i) (list 'const i)) (number-sequence 1 500)))))
+    (should-not (elistan-type--small-p big))
+    (should (eq (elistan-type--cap big) 'unknown))))
+
 (provide 'elistan-type-test)
 ;;; elistan-type-test.el ends here
