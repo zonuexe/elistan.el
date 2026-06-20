@@ -189,6 +189,28 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
       (should-not (assq 'animal h))
       (should-not (assq 'widget h)))))
 
+(ert-deftest elistan-struct-inherited-accessors ()
+  "A cl-defstruct :include child gets readers for inherited slots via its conc."
+  (with-temp-buffer
+    (insert "(cl-defstruct animal (name \"\" :type string))\n"
+            "(cl-defstruct (dog (:include animal)) (breed nil :type symbol))\n"
+            "(cl-defstruct (puppy (:include dog)) cute)\n")
+    (let ((db (elistan-struct-parse-buffer)))
+      ;; own accessor (nil default widens symbol with null)
+      (should (equal (cdr (assq 'dog-breed db))
+                     '(function ((:class dog)) (or symbol null))))
+      ;; inherited from animal via dog's conc-name, keeping animal's slot type
+      (should (equal (cdr (assq 'dog-name db))
+                     '(function ((:class dog)) string)))
+      ;; transitive: puppy inherits both dog-breed's and animal's slots
+      (should (equal (cdr (assq 'puppy-name db))
+                     '(function ((:class puppy)) string)))
+      (should (equal (cdr (assq 'puppy-breed db))
+                     '(function ((:class puppy)) (or symbol null))))
+      ;; the parent's own accessor is unchanged
+      (should (equal (cdr (assq 'animal-name db))
+                     '(function ((:class animal)) string))))))
+
 (ert-deftest elistan-struct-subclass-accepted ()
   "With the hierarchy supplied, a subclass instance is accepted where the
 superclass is wanted, and the predicate narrows a superclass var to the

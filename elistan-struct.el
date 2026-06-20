@@ -124,6 +124,22 @@ a subclass instance is accepted where a superclass is wanted while unrelated
 classes stay non-disjoint (no false positive)."
   (list :class name))
 
+(defun elistan-struct--conc-name (name options)
+  "Return the accessor-name prefix string for `cl-defstruct' NAME with OPTIONS."
+  (let ((c (elistan-struct--option options :conc-name)))
+    (cond ((and c (not (eq c t))) (format "%s" c))
+          (c "")
+          (t (format "%s-" name)))))
+
+(defun elistan-struct--slot-type (slot)
+  "Return the typespec type for a `cl-defstruct' SLOT spec.
+Translates the slot `:type' and applies the nil-default widening (a bare name,
+a `(name)' with no default, or an explicit nil default leaves the slot nil)."
+  (let ((ty (elistan-struct--translate-type
+             (and (consp slot) (plist-get (cddr slot) :type))))
+        (nil-default (or (symbolp slot) (null (cdr slot)) (null (cadr slot)))))
+    (if nil-default (elistan-struct--nilable ty) ty)))
+
 (defun elistan-struct--defstruct (form)
   "Return an alist of generated NAME -> funspec for a `cl-defstruct' FORM."
   (pcase form
@@ -133,10 +149,7 @@ classes stay non-disjoint (no false positive)."
             (pred (let ((p (elistan-struct--option options :predicate)))
                     (if (and p (not (eq p t))) p
                       (intern (format "%s-p" name)))))
-            (conc (let ((c (elistan-struct--option options :conc-name)))
-                    (cond ((and c (not (eq c t))) (format "%s" c))
-                          (c "")
-                          (t (format "%s-" name)))))
+            (conc (elistan-struct--conc-name name options))
             (ctor (let ((c (elistan-struct--option options :constructor)))
                     (if (and c (not (eq c t))) c
                       (intern (format "make-%s" name)))))
@@ -157,21 +170,10 @@ classes stay non-disjoint (no false positive)."
            ;; maps to nil; the guard skips it (and anything non-symbol-named).
            (let ((sn (elistan-struct--slot-name slot)))
              (when (and sn (symbolp sn))
-               (let* (;; CL slot: `(name [default [keyword value]...])'; :type
-                      ;; lives in the keyword plist after the default value.
-                      (ty (elistan-struct--translate-type
-                           (and (consp slot) (plist-get (cddr slot) :type))))
-                      ;; The slot's initial value is its default; a bare name, a
-                      ;; `(name)' with no default, or an explicit nil default all
-                      ;; leave it nil — which a non-nil `:type' would contradict.
-                      (nil-default (or (symbolp slot)
-                                       (null (cdr slot))
-                                       (null (cadr slot)))))
-                 (when nil-default
-                   (setq ty (elistan-struct--nilable ty)))
-                 (push (cons (intern (concat conc (symbol-name sn)))
-                             (list 'function (list ctype) ty))
-                       acc))))))
+               (push (cons (intern (concat conc (symbol-name sn)))
+                           (list 'function (list ctype)
+                                 (elistan-struct--slot-type slot)))
+                     acc)))))
        (nreverse acc)))
     (_ nil)))
 
@@ -223,20 +225,75 @@ Used to build the class hierarchy for `(:class …)' subtyping."
             (and ps (cons name ps)))))
     (_ nil)))
 
-(defun elistan-struct-parse-buffer ()
-  "Scan the current buffer for `cl-defstruct'/`defclass' definitions.
-Return an alist of generated NAME -> typespec funspec."
-  (let ((result nil))
+(defun elistan-struct--struct-info (form)
+  "Return a plist `(:name :conc :include :slots)' for a `cl-defstruct' FORM.
+:slots holds the raw slot specs (a leading docstring and non-symbol entries
+dropped).  Returns nil for any other form.  Used to resolve inherited slots."
+  (pcase form
+    (`(,(or 'cl-defstruct 'defstruct) ,head . ,slots)
+     (let* ((options (and (consp head) (cdr head)))
+            (name (if (consp head) (car head) head))
+            (inc (elistan-struct--option options :include)))
+       (when (and name (symbolp name))
+         (list :name name
+               :conc (elistan-struct--conc-name name options)
+               :include (and inc (symbolp inc) inc)
+               :slots (seq-filter
+                       (lambda (s) (let ((sn (elistan-struct--slot-name s)))
+                                     (and sn (symbolp sn))))
+                       slots)))))
+    (_ nil)))
+
+(defun elistan-struct--inherited-accessors (forms)
+  "Return inherited-slot accessor funspecs for `cl-defstruct' `:include' chains.
+A child reaches an inherited slot via its own conc-name (`CHILD-PARENTSLOT'),
+so resolve the ancestor chain among FORMS (same scan) and register a reader
+`(function ((:class CHILD)) TYPE)' for each inherited slot not shadowed by a
+nearer definition.  A parent not found among FORMS simply ends the chain."
+  (let ((infos (delq nil (mapcar #'elistan-struct--struct-info forms)))
+        (acc nil))
+    (dolist (info infos)
+      (let* ((name (plist-get info :name))
+             (conc (plist-get info :conc))
+             (ctype (elistan-struct--class-type name))
+             ;; Slot names already provided by a nearer definition (own first).
+             (seen (mapcar #'elistan-struct--slot-name (plist-get info :slots)))
+             (p (plist-get info :include))
+             (guard nil))
+        (while (and p (symbolp p) (not (memq p guard)))
+          (push p guard)
+          (let ((pinfo (seq-find (lambda (i) (eq (plist-get i :name) p)) infos)))
+            (if (not pinfo)
+                (setq p nil)
+              (dolist (slot (plist-get pinfo :slots))
+                (let ((sn (elistan-struct--slot-name slot)))
+                  (unless (memq sn seen)
+                    (push sn seen)
+                    (push (cons (intern (concat conc (symbol-name sn)))
+                                (list 'function (list ctype)
+                                      (elistan-struct--slot-type slot)))
+                          acc))))
+              (setq p (plist-get pinfo :include)))))))
+    (nreverse acc)))
+
+(defun elistan-struct--read-forms ()
+  "Read all top-level forms from the current buffer, tolerating read errors."
+  (let ((forms nil))
     (save-excursion
       (goto-char (point-min))
       (condition-case nil
-          (while t
-            (let ((form (read (current-buffer))))
-              (setq result (append result
-                                   (elistan-struct--defstruct form)
-                                   (elistan-struct--defclass form)))))
+          (while t (push (read (current-buffer)) forms))
         ((end-of-file invalid-read-syntax) nil)))
-    result))
+    (nreverse forms)))
+
+(defun elistan-struct-parse-buffer ()
+  "Scan the current buffer for `cl-defstruct'/`defclass' definitions.
+Return an alist of generated NAME -> typespec funspec, including inherited-slot
+accessors for `cl-defstruct' `:include' chains defined in the same buffer."
+  (let ((forms (elistan-struct--read-forms)))
+    (append (apply #'append (mapcar #'elistan-struct--defstruct forms))
+            (apply #'append (mapcar #'elistan-struct--defclass forms))
+            (elistan-struct--inherited-accessors forms))))
 
 (defun elistan-struct-parse-hierarchy ()
   "Scan the current buffer for the class hierarchy.
