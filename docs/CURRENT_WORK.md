@@ -9,12 +9,26 @@ and `docs/adr/0001`–`0014` (design decisions). v1 scope lives in
 ## Status
 
 The v1 checker front-end is **implemented, hardened on real codebases, and
-extended** with project-wide checking and a defstruct/defclass type source.
+extended well past v1**. On top of the original front-end this now includes:
+project-wide (cross-file) checking; in-file type sources (Elsa annotations +
+DBs, `cl-defstruct`/`defclass`, the file's own `(typespec …)`/`declare` forms);
+**Full EIEIO** (`(:class)` static subtyping, inherited accessors, slot-typed
+`oref`/`slot-value`/`oset`); lambda-body descent; `and`/`or` constant-guard
+detection; deterministic (order-independent) macroexpansion; and broadened
+type-predicate-guard coverage. Four finding categories: `call-type-mismatch`,
+`dead-branch`, `return-type-mismatch`, `slot-type-mismatch`.
+
+The companion `../emacs-typespec` had a coordinated foundation pass this cycle
+(see "typespec coordination" below) — it must be present and current.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
-  committed. (There is no `main`; `master` is the default.)
+  committed. (There is no `main`; `master` is the default.) `../emacs-typespec`
+  is likewise clean/committed.
 - **74 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
+- **Quality:** full elpa sweep = **743 files → 23 findings, 0 crashes**, verified
+  **order-stable** and every finding a confirmed true positive; in-scope
+  **recall 100%** (`.scratch/recall/`). See "Validation".
 
 ## Build / test / run
 
@@ -51,6 +65,8 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   `typespec-builtins-lookup` → `elistan-source-builtins` (loaded DBs) →
   `elistan-source--fallback`. `elistan-source-authoritative-p` = only in-file
   annotations + user decls are trusted for **argument checking** (ADR-0014).
+  The fallback covers the common type-predicate guards (`stringp`, `integerp`,
+  `arrayp`, `markerp`, `framep`, … → `(:guard! TYPE)`) for narrowing.
 - `elistan-elsa.el` — reads Elsa `;; (NAME :: TYPE)` annotations *and* Elsa's
   `elsa-typed-*.el` builtin DBs (`elistan-elsa-register-typed-dbs`, opt-in,
   ~327 types). Translates Elsa notation → typespec. `elistan-elsa--corrections`
@@ -61,7 +77,10 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   typed `(:class NAME)` and the class hierarchy (`:include` / defclass parents)
   is supplied to typespec's static subtyping via
   `elistan-struct-parse-hierarchy`; inherited `:include` slot accessors are
-  registered (same-buffer). Slot `:type` becomes the reader return type
+  registered (same-buffer, plus cross-file in project mode via
+  `elistan-project-struct-infos`); `elistan-struct-parse-class-slots` builds the
+  class→slot-type registry for `oref`/`slot-value`/`oset`. Slot `:type` becomes
+  the reader return type
   (`elistan-struct--translate-type`, conservative: unmodelled → `mixed`,
   parameterised containers → bare container); a nil/absent default widens it
   with `null` so a `cl-defstruct` `:type` that the nil default contradicts
@@ -77,9 +96,12 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   `(TYPE . ENV)` with divergence-aware confluence; `elistan-walk-defun` /
   `elistan-check-forms` are the entry points. Descends into lambda bodies
   (params + captured vars `unknown`); types `oref`/`slot-value` reads and checks
-  `oset` writes. **Per-defun work budget** + symbols-with-pos. Four findings:
-  `call-type-mismatch`, `dead-branch`, `return-type-mismatch`,
-  `slot-type-mismatch`.
+  `oset` writes (`elistan-walk-class-slots`); flags provably-constant guards in
+  `and`/`or` operands (rest unreachable). `elistan-walk--macroexpand`
+  **inhibits compiler-macro inlining** so expansion is deterministic and
+  source-faithful (not load-order-dependent). **Per-defun work budget** +
+  symbols-with-pos. Four findings: `call-type-mismatch`, `dead-branch`,
+  `return-type-mismatch`, `slot-type-mismatch`.
 - `elistan-batch.el` — batch/CLI driver; merges in-file annotations + struct
   defs + typespec declarations into `elistan-source-local`; drops findings with
   no position.
@@ -110,22 +132,33 @@ redundant `(eq type 'year)` in a pcase `year` arm in datetime.el); `and`/`or`
 constant-guard detection (+4 genuine — redundant `(or PARAM fallback)` where
 PARAM is provably non-nil); and the Elsa-DB return-type correction (−1 — removed
 `marginalia.el:619`, a latent false positive from Elsa typing
-`help-function-arglist` as never-string, see below). Reproduce:
+`help-function-arglist` as never-string, see below).
 
 **Recall** (the other axis — `.scratch/recall/`): on a labelled in-scope bug
 corpus, **12/12 caught (100%)** at 0 false positives / 0 out-of-scope leaks. The
-measurement paid for itself by surfacing two real bugs (below). See
-`.scratch/recall/REPORT.md`.
+measurement paid for itself by surfacing **three** real bugs (all fixed):
+1. **Literal-argument position drop** — a *detected* call mismatch on a literal
+   arg (`(f 5)`) was discarded for lack of a source position; now falls back to
+   the call's function position.
+2. **Order-dependent inference** (`.scratch/recall/MACROEXPAND-LEAK.md`) — the
+   walker's `macroexpand-all` applied **compiler-macros** (inlining e.g.
+   `char-before`), whose availability grows as files load libraries, making
+   inference order-dependent and surfacing findings about inlined library
+   internals. `elistan-walk--macroexpand` now inhibits compiler-macro expansion
+   → deterministic, source-faithful, order-stable. (Unblocked `and`/`or`.)
+3. **Latent baseline FP** — Elsa's DB typed `help-function-arglist` as
+   never-string, so `(stringp (help-function-arglist f))` at `marginalia.el:619`
+   was wrongly "dead"; the "20 findings, 0 FP" baseline was really 19 TP + 1 FP.
+   Fixed by `elistan-elsa--corrections` (overrides unsound DB return types).
 
-**Fixed bug — order-dependent inference** (`.scratch/recall/MACROEXPAND-LEAK.md`):
-the walker's `macroexpand-all` applied **compiler-macros** (inlining e.g.
-`char-before`), whose availability grows as files load libraries, making
-inference order-dependent and surfacing findings about inlined library
-internals. `elistan-walk--macroexpand` now inhibits compiler-macro expansion, so
-analysis is deterministic and source-faithful; the sweep is verified
-order-stable. (This unblocked the `and`/`or` detection.) The earlier
-literal-argument position-drop reporting bug was also fixed during the recall
-work.
+**Near-miss avoided this cycle:** a `diff(SUB, SUPER) = never` reduction was
+prototyped (to also catch the false-branch of guards like `(arrayp x)` on a
+string) but **reverted as unsound** — typespec's `type-subtype-p` is
+category-coarse (reports `(const "a") ⊑ (const "b")`, `symbol ⊑ keyword`), which
+is safe for `meet` but under-approximates for `diff` → false positives. Caught
+on the corpus before commit. See "Deferred" #6 (precise subtype check).
+
+Reproduce the full sweep (load Elsa DBs, then check every elpa file):
 
 ```elisp
 ;; emacs -Q --batch -L . -L ../emacs-typespec -l elistan-batch --eval '(...)'
@@ -137,8 +170,10 @@ work.
       (condition-case e (elistan-batch-check-file f) (error ...)))))
 ```
 
-Real test corpora: `/Users/megurine/repo/emacs/Elsa` (annotations + builtin DBs)
-and `~/.emacs.d/elpa` (202 packages). The hardening pass fixed: 2 crash classes
+Test corpora: `/Users/megurine/repo/emacs/Elsa` (annotations + builtin DBs) and
+`~/.emacs.d/elpa` (~200 packages; file count drifts as packages update).
+
+*Original v1 hardening pass (historical context)* fixed: 2 crash classes
 (improper/dotted lists, `macroexpand-all` failure e.g. `named-let`), 1 hang
 (huge generated form / circular literal — bounded by the work budget + type-size
 cap), and ~9 false-positive classes (`never`-value, and/or & condition-case
@@ -159,18 +194,20 @@ Status after the `../emacs-typespec` foundation pass:
    `(or (const t) null)` spelling for `boolean` was reverted to plain `boolean`
    (`4ac7dd1`).
 4. ~~**noreturn `never`**~~ — *done upstream* (`ba3e471`): the noreturn builtins
-   are registered in `typespec-builtins` with a `never' return. elistan's
-   fallback was trimmed to just the `cl-return*` macros (`bb…`/source commit).
+   are registered in `typespec-builtins` with a `never` return. elistan's
+   fallback was trimmed to just the `cl-return*` macros (`9c2317a`).
 5. ~~**Promote internals to public API**~~ — *done upstream* (`ba3e471`):
    `typespec-eval-call-split-argspecs` and `typespec-eval-call-type-compatible-p`
-   are now public wrappers. (elistan has not yet adopted them — see EIEIO step 2
-   / a future DRY pass for `elistan-source-arglist`.)
-6. ~~**Class types — static subtyping (foundation)**~~ — *done upstream*
-   (`6e393ba`): `(:class C)` ⊑ `(:class P)` is decided statically from a
-   supplied `typespec-eval-types-class-parents` hierarchy; meet narrows to the
-   subclass; unrelated classes stay non-disjoint (zero-FP, sound under EIEIO's
-   open world). **elistan does not emit `(:class)` yet** — wiring it up is the
-   next EIEIO increment (see below).
+   are now public wrappers. (elistan has *not* adopted them yet — a future DRY
+   pass could replace `elistan-source-arglist` with the public splitter, which
+   would also give `&key` support for free.)
+6. ~~**Class types — static subtyping**~~ — *done end-to-end* (typespec
+   `6e393ba` + elistan EIEIO work): typespec decides `(:class C)` ⊑ `(:class P)`
+   from `typespec-eval-types-class-parents`, and elistan emits `(:class)` and
+   supplies the hierarchy. Open follow-up: typespec's `type-subtype-p` is
+   **category-coarse** (see the near-miss in "Validation") — a *precise* subtype
+   relation would let `diff(SUB, SUPER)` reduce to `never` soundly and unlock the
+   false-branch direction of guard narrowing. See "Deferred" #6.
 
 ## Deferred / next steps (rough feasibility order)
 
@@ -214,25 +251,46 @@ Status after the `../emacs-typespec` foundation pass:
    Design note: under zero-FP + EIEIO's open world, class subtyping adds
    *acceptance/narrowing precision*, not rejection of unrelated classes (that
    would be unsound).
-5. **Flycheck backend** — postponed by request (needs an optional-dependency
-   build decision: flycheck isn't on the `make` load-path).
-6. **Lower-value / thorny deferred** (see PRD "Deferred / future"):
-   - **non-function top-level forms** — *unsafe naively*: most top-level
-     definition macros (`compat-defun`, `cl-defmethod`, `use-package`, …) are
-     not loaded during analysis, so `macroexpand-all` leaves them and walking
-     them as expressions yields FPs + crashes (verified empirically). A sound
-     version must gate on "head is a loaded function", which excludes the
-     interesting macro targets — i.e. the safe slice is low value.
-   - **`&key`/`cl-defun` params** — elistan only argument-checks against
-     authoritative in-file contracts, which essentially never declare typed
-     `&key` params today, so low marginal value (typespec *does* support `&key`
-     in `typespec-eval-call`, so result typing already benefits).
-   - **precise `catch`/`condition-case`** — basic `throw` divergence already
-     works via the `never` fallback; the precise tag-matching is low value.
-   - **changed-only incremental** — perf only; the checker is already ~6s for
-     the whole elpa corpus.
-7. **Optional style-lint layer** — explicitly out of the type/flow scope
-   (ADR-0013); Elsa/checkdoc/package-lint cover it.
+5. ~~**Elsa DB soundness + guard coverage**~~ — *done this cycle.* Corrected
+   unsound Elsa return types (`elistan-elsa--corrections`) and broadened
+   type-predicate-guard coverage (`elistan-source--fallback`: `arrayp`,
+   `markerp`, …). Spot-audit of ~45 common functions shows Elsa's DB is
+   otherwise sound; a full 327-entry audit is low-yield.
+
+### Remaining work (for the next session)
+
+**Highest value:**
+- **Precise subtype relation in typespec** — `type-subtype-p` is category-coarse
+  (reports e.g. `symbol ⊑ keyword`, distinct const ⊑ const). A precise relation
+  would (a) let `diff(SUB, SUPER)` reduce to `never` soundly → unlock the
+  *false-branch* direction of guard narrowing (e.g. `(arrayp x)` with x : string
+  ⇒ else dead), and (b) generally sharpen meet/subtyping. Medium typespec task;
+  validate the elistan sweep stays zero-FP after. (Why it matters: the only
+  recall/precision lever left that doesn't trade against zero-FP.)
+
+**Lower value / thorny** (see PRD "Deferred / future"):
+- **Flycheck backend** — postponed by request; needs an optional-dependency
+  build decision (flycheck isn't on the `make` load-path — add it, or exclude
+  the file from `make compile`). Mirrors `elistan-flymake.el` otherwise.
+- **non-function top-level forms** — *unsafe naively*: most top-level definition
+  macros (`compat-defun`, `cl-defmethod`, `use-package`, …) aren't loaded during
+  analysis, so `macroexpand-all` leaves them and walking them as expressions
+  yields FPs + crashes (verified). A sound version must gate on "head is a loaded
+  function", which excludes the interesting macro targets — safe slice is low
+  value.
+- **`&key`/`cl-defun` params** — elistan only argument-checks authoritative
+  in-file contracts, which essentially never declare typed `&key` today (typespec
+  *does* support `&key` for result typing already). Low marginal value.
+- **precise `catch`/`condition-case`** — basic `throw` divergence already works
+  via the `never` fallback; precise tag-matching is low value.
+- **changed-only incremental** — perf only; the checker is ~6s for all of elpa.
+- **adopt typespec's public splitter** (`typespec-eval-call-split-argspecs`) in
+  `elistan-source-arglist` — DRY + free `&key` handling (coordination #5).
+- **`(setf (oref …) …)` place form** — covered only when it macroexpands to
+  `eieio-oset`; the unexpanded `setf` place isn't matched (minor).
+
+**Out of scope:** optional style-lint layer (ADR-0013; Elsa/checkdoc/
+package-lint cover it).
 
 ## Gotchas / notes
 
