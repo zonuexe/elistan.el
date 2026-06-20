@@ -96,10 +96,12 @@ positive — this is the project's defining constraint. Key derived rules:
 ## Validation
 
 Swept Elsa + the full elpa set (`~/.emacs.d/elpa`) with Elsa's builtin DBs
-loaded: **743 files → 19 findings, 0 crashes, ~6s** (corpus drifts as packages
-update). Every finding verified to be genuine dead code (zero false positives) —
-including after lambda-body descent, which added one genuine finding and, via
-the accompanying `setq` soundness fix, removed one pre-existing FP. Reproduce:
+loaded: **743 files → 20 findings, 0 crashes, ~6s** (corpus drifts as packages
+update). Every finding verified to be genuine dead code (zero false positives).
+The count grew from the v1 baseline of 19 via: lambda-body descent (+1 genuine,
+and its `setq` soundness fix −1 pre-existing FP) and the typespec `(const nil)`
+intersection fix (+1 genuine — a redundant `(eq type 'year)` inside a pcase
+`year` arm in datetime.el). Reproduce:
 
 ```elisp
 ;; emacs -Q --batch -L . -L ../emacs-typespec -l elistan-batch --eval '(...)'
@@ -121,21 +123,24 @@ cap), and ~9 false-positive classes (`never`-value, and/or & condition-case
 
 ## typespec coordination items (work belongs upstream)
 
-elistan works around these locally; they should be fixed/added in typespec.
-Some were spawned as task chips in `../emacs-typespec`:
-1. **Gradual dynamic** — make `unknown` consistent in *both* directions (it is
-   currently top only on the expected side); `typespec-eval-call` must not
-   `:cause-error` on an `unknown` argument.
-2. **Range intersection bug** — `(typespec-eval-op-and '((integer * 5) (integer
-   3 *)))` errors (`number-or-marker-p *`); should be `(integer 3 5)`.
-3. **`(const nil)` / `boolean` intersection** — `meet(X, (const nil))` yields
-   `never` even when X contains nil; `boolean - (const t)` doesn't simplify.
+Status after the `../emacs-typespec` foundation pass:
+1. ~~**Gradual dynamic**~~ — *done upstream* (typespec ADR-0001; `unknown` is the
+   symmetric gradual dynamic, `typespec-eval-call` no longer `:cause-error`s on
+   an `unknown` argument).
+2. ~~**Range intersection bug**~~ — *done upstream* (`(and (integer * 5)
+   (integer 3 *))` ≡ `(integer 3 5)`).
+3. ~~**`(const nil)` / `boolean` intersection**~~ — *done upstream*
+   (typespec `1971f15`, `89d19ce`): `(const V)` intersects/differences by
+   membership, and finite `boolean` differences reduce. elistan's
+   `(or (const t) null)` spelling for `boolean` was reverted to plain `boolean`
+   (`4ac7dd1`).
 4. **noreturn `never`** — `error`/`signal`/`throw`/… should carry return type
-   `never` (drives divergence). elistan ships a fallback set.
+   `never` (drives divergence). elistan still ships a fallback set.
 5. **Promote internals to public API** — `typespec-eval-call--type-compatible-p`
    and `typespec-eval-call--split-argspecs`.
 6. **Class types** — typespec has no *static* class subtyping (`child-of-class-p`
-   needs live EIEIO classes). Needed for full EIEIO.
+   needs live EIEIO classes). Needed for full EIEIO (the headline foundation
+   item still open).
 
 ## Deferred / next steps (rough feasibility order)
 
