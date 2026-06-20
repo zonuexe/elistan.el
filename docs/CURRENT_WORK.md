@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **70 ert tests**, green on source *and* byte-compiled (`make check`).
+- **72 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
@@ -100,30 +100,29 @@ positive — this is the project's defining constraint. Key derived rules:
 ## Validation
 
 Swept Elsa + the full elpa set (`~/.emacs.d/elpa`) with Elsa's builtin DBs
-loaded: **743 files → 20 findings, 0 crashes, ~6s** (corpus drifts as packages
-update). Every finding verified to be genuine dead code (zero false positives).
-The count grew from the v1 baseline of 19 via: lambda-body descent (+1 genuine,
-and its `setq` soundness fix −1 pre-existing FP) and the typespec `(const nil)`
-intersection fix (+1 genuine — a redundant `(eq type 'year)` inside a pcase
-`year` arm in datetime.el). Reproduce:
+loaded: **743 files → 25 findings, 0 crashes, ~6s**, verified **order-stable**
+(identical forward and reversed). Every finding verified to be genuine dead code
+(zero false positives). The count grew from the v1 baseline of 19 via:
+lambda-body descent (+1, and its `setq` soundness fix −1 pre-existing FP), the
+typespec `(const nil)` intersection fix (+1 — a redundant `(eq type 'year)` in a
+pcase `year` arm in datetime.el), and `and`/`or` constant-guard detection (+5 —
+redundant `(or PARAM fallback)` where PARAM is provably non-nil, etc.).
+Reproduce:
 
-**Recall** (the other axis, measured separately — `.scratch/recall/`): on a
-labelled in-scope bug corpus, **11/12 caught (92%)** at 0 false positives / 0
-out-of-scope leaks. The measurement surfaced + fixed a reporting bug (a
-literal-argument call mismatch was *detected* but dropped for lack of a source
-position). See `.scratch/recall/REPORT.md`.
+**Recall** (the other axis — `.scratch/recall/`): on a labelled in-scope bug
+corpus, **12/12 caught (100%)** at 0 false positives / 0 out-of-scope leaks. The
+measurement paid for itself by surfacing two real bugs (below). See
+`.scratch/recall/REPORT.md`.
 
-**Priority known bug — order-dependent inference** (`.scratch/recall/MACROEXPAND-LEAK.md`):
-`elistan-walk-defun`'s `macroexpand-all` has global side effects (the CL class
-registry grows +24 over 150 files), so a later file's inference is
-order-dependent (a param typed `unknown` in isolation can become non-nil after
-other files are processed). Latent reliability gap for **project mode** /
-multi-file runs (could yield order-dependent FPs). This is why the last recall
-gap — `and`/`or` constant-guard detection — was implemented but **reverted**: it
-surfaced the leak as order-dependent findings. Fix the leak first (isolate
-macroexpand side effects and/or make `(:class)` subtyping fully static), then
-re-land `and`/`or` detection (its logic is sound; `marginalia.el:619` is a
-genuine TP that reproduces in isolation).
+**Fixed bug — order-dependent inference** (`.scratch/recall/MACROEXPAND-LEAK.md`):
+the walker's `macroexpand-all` applied **compiler-macros** (inlining e.g.
+`char-before`), whose availability grows as files load libraries, making
+inference order-dependent and surfacing findings about inlined library
+internals. `elistan-walk--macroexpand` now inhibits compiler-macro expansion, so
+analysis is deterministic and source-faithful; the sweep is verified
+order-stable. (This unblocked the `and`/`or` detection.) The earlier
+literal-argument position-drop reporting bug was also fixed during the recall
+work.
 
 ```elisp
 ;; emacs -Q --batch -L . -L ../emacs-typespec -l elistan-batch --eval '(...)'

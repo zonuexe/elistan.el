@@ -22,10 +22,13 @@ emacs -Q --batch -L . -L ../emacs-typespec -l .scratch/recall/recall.el
 ## Result
 
 ```
-In-scope recall : 11/12 caught (92%)
+In-scope recall : 12/12 caught (100%)
 Precision (correct cases): 0 false positives
 Out-of-scope leaks       : 0/6 emitted a finding
 ```
+
+(Was 11/12 until `and`/`or` constant-guard detection landed; see
+`MACROEXPAND-LEAK.md` for the determinism fix that made that feature safe.)
 
 - **In-scope recall 92%** across all four finding categories
   (call-type-mismatch, dead-branch, return-type-mismatch, slot-type-mismatch),

@@ -1,7 +1,17 @@
 # Discovered bug: order-dependent inference via macroexpand-all side effects
 
+> **RESOLVED** (`fix(walk): deterministic macroexpand`). Root cause: `macroexpand-all`
+> applied **compiler-macros** (e.g. `char-before` → `(char-after (1- (or pos
+> (point))))`) whose availability grows as files are processed (autoloaded
+> libraries install them), so expansion — and thus inference — was order-dependent
+> and surfaced findings about *inlined library internals*. Fix:
+> `elistan-walk--macroexpand` neutralises `macroexp--compiler-macro` so the walker
+> analyses the source as written. Sweep is now verified order-stable (forward =
+> reverse). The `and`/`or` constant-guard feature was then re-landed cleanly.
+> The analysis below is the original investigation.
+
 Found while implementing `and`/`or` constant-guard detection (the last in-scope
-recall gap). That feature is **reverted** because, on the corpus, it produced
+recall gap). That feature was **reverted** because, on the corpus, it produced
 **order-dependent findings** — a symptom of a deeper pre-existing bug.
 
 ## Symptom
