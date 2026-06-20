@@ -100,6 +100,32 @@ later test must not be read as provably nil."
     (should (equal (plist-get (elistan-finding-data f) :expected) 'string))
     (should (equal (plist-get (elistan-finding-data f) :actual) 'integer))))
 
+(ert-deftest elistan-walk-oref-slot-type ()
+  "`(slot-value obj 'slot)' / `(oref obj slot)' reads are typed as the slot type.
+A slot typed integer makes `(stringp …)' on it a provably dead branch."
+  (elistan-walk-test--declare 'et-w1 '(function ((:class widget)) integer))
+  (elistan-walk-test--declare 'et-w2 '(function ((:class button)) integer))
+  (let ((elistan-walk-class-slots '((widget (width . integer))))
+        (typespec-eval-types-class-parents '((button widget))))
+    ;; slot-value on the object's own slot -> integer -> `then' dead.
+    (should (elistan-walk-test--of
+             (elistan-walk-defun
+              '(defun et-w1 (obj)
+                 (let ((n (slot-value obj 'width))) (if (stringp n) 1 2))))
+             'dead-branch))
+    ;; oref on a slot INHERITED via the hierarchy (button <- widget) -> integer.
+    (should (elistan-walk-test--of
+             (elistan-walk-defun
+              '(defun et-w2 (obj)
+                 (let ((n (oref obj width))) (if (stringp n) 1 2))))
+             'dead-branch))
+    ;; An unknown slot stays `unknown' -> no finding (no false positive).
+    (should-not (elistan-walk-test--of
+                 (elistan-walk-defun
+                  '(defun et-w1 (obj)
+                     (let ((n (slot-value obj 'missing))) (if (stringp n) 1 2))))
+                 'dead-branch))))
+
 (ert-deftest elistan-walk-return-mismatch ()
   "A body type incompatible with the declared return is reported (category 3)."
   (elistan-walk-test--declare 'et-h '(function (string) integer))

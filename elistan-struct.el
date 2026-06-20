@@ -177,6 +177,15 @@ a `(name)' with no default, or an explicit nil default leaves the slot nil)."
        (nreverse acc)))
     (_ nil)))
 
+(defun elistan-struct--defclass-slot-type (slot)
+  "Return the typespec type for a `defclass' SLOT spec.
+Translates the slot `:type'; an explicit `:initform nil' widens it with nil (an
+absent :initform leaves the slot *unbound* — access errors rather than returning
+nil — so it does not widen)."
+  (let ((ty (elistan-struct--translate-type (plist-get (cdr slot) :type)))
+        (init (plist-member (cdr slot) :initform)))
+    (if (and init (null (cadr init))) (elistan-struct--nilable ty) ty)))
+
 (defun elistan-struct--defclass (form)
   "Return an alist of generated NAME -> funspec for a `defclass' FORM."
   (pcase form
@@ -191,19 +200,12 @@ a `(name)' with no default, or an explicit nil default leaves the slot nil)."
          ;; Slots may declare a :type and one or more reader functions.
          (dolist (slot slots)
            (when (consp slot)
-             (let* ((plist (cdr slot))
-                    (ty (elistan-struct--translate-type (plist-get plist :type)))
-                    ;; An explicit `:initform nil' leaves the slot nil-valued; an
-                    ;; absent :initform leaves it *unbound* (access errors rather
-                    ;; than returning nil), so only the explicit case widens.
-                    (init (plist-member plist :initform)))
-               (when (and init (null (cadr init)))
-                 (setq ty (elistan-struct--nilable ty)))
+             (let ((ty (elistan-struct--defclass-slot-type slot)))
                ;; `:accessor' and `:reader' both generate a reader `(NAME obj)'
                ;; of the slot type (`:accessor' is additionally setf-able; the
                ;; read shape is identical).
                (dolist (key '(:accessor :reader))
-                 (let ((fn (plist-get plist key)))
+                 (let ((fn (plist-get (cdr slot) key)))
                    (when (and fn (symbolp fn))
                      (push (cons fn (list 'function (list ctype) ty)) acc)))))))
          (nreverse acc))))
@@ -308,6 +310,35 @@ Return an alist of CLASS -> (PARENT...) from `cl-defstruct' `:include' and
               (when cell (push (cons (car cell) (cdr cell)) result))))
         ((end-of-file invalid-read-syntax) nil)))
     (nreverse result)))
+
+(defun elistan-struct-parse-class-slots ()
+  "Scan the current buffer for class slot types (defstruct + defclass).
+Return an alist CLASS -> ((SLOT . TYPE)...) keyed by the bare slot name, for
+typing `(oref OBJ SLOT)' / `(slot-value OBJ \\='SLOT)' reads.  Inheritance is
+resolved at lookup time via the class hierarchy, so only own slots are listed."
+  (let ((result nil))
+    (dolist (form (elistan-struct--read-forms) (nreverse result))
+      (pcase form
+        (`(defclass ,name ,_parents ,slots . ,_)
+         (when (and name (symbolp name))
+           (push (cons name
+                       (delq nil
+                             (mapcar
+                              (lambda (s)
+                                (and (consp s) (symbolp (car s))
+                                     (cons (car s)
+                                           (elistan-struct--defclass-slot-type s))))
+                              slots)))
+                 result)))
+        ((or `(cl-defstruct . ,_) `(defstruct . ,_))
+         (let ((info (elistan-struct--struct-info form)))
+           (when info
+             (push (cons (plist-get info :name)
+                         (mapcar (lambda (s)
+                                   (cons (elistan-struct--slot-name s)
+                                         (elistan-struct--slot-type s)))
+                                 (plist-get info :slots)))
+                   result))))))))
 
 (provide 'elistan-struct)
 ;;; elistan-struct.el ends here

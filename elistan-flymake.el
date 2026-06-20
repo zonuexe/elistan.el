@@ -71,6 +71,9 @@
          (typespec-eval-types-class-parents
           (append (elistan-struct-parse-hierarchy)
                   typespec-eval-types-class-parents))
+         (elistan-walk-class-slots
+          (append (elistan-struct-parse-class-slots)
+                  elistan-walk-class-slots))
          (forms (save-excursion
                   (goto-char (point-min))
                   (elistan-batch--read-buffer)))

@@ -211,6 +211,19 @@ accessor return must admit nil or `(if (NAME-slot x) ...)' would be misread."
       (should (equal (cdr (assq 'animal-name db))
                      '(function ((:class animal)) string))))))
 
+(ert-deftest elistan-struct-parse-class-slots ()
+  "Slot-type registry is read from defclass and defstruct for oref/slot-value."
+  (with-temp-buffer
+    (insert "(defclass widget () ((width :type integer :initarg :width)\n"
+            "                     (label :type string :initform nil)))\n"
+            "(cl-defstruct point (x 0 :type integer))\n")
+    (let ((slots (elistan-struct-parse-class-slots)))
+      (should (equal (cdr (assq 'width (cdr (assq 'widget slots)))) 'integer))
+      ;; :initform nil widens the slot type with null.
+      (should (equal (cdr (assq 'label (cdr (assq 'widget slots))))
+                     '(or string null)))
+      (should (equal (cdr (assq 'x (cdr (assq 'point slots)))) 'integer)))))
+
 (ert-deftest elistan-struct-subclass-accepted ()
   "With the hierarchy supplied, a subclass instance is accepted where the
 superclass is wanted, and the predicate narrows a superclass var to the

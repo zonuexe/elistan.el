@@ -79,6 +79,10 @@ Assumes the analysed buffer is current (for position lookup)."
            (typespec-eval-types-class-parents
             (append (elistan-struct-parse-hierarchy)
                     typespec-eval-types-class-parents))
+           ;; In-file slot types feed `oref'/`slot-value' result typing.
+           (elistan-walk-class-slots
+            (append (elistan-struct-parse-class-slots)
+                    elistan-walk-class-slots))
            ;; Skip findings with no source position: they are macro-introduced
            ;; and not user-actionable (the editor driver skips them likewise).
            (findings (seq-filter #'elistan-finding-pos

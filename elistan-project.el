@@ -61,11 +61,23 @@ The first definition seen for a class wins."
           (dolist (cell (elistan-struct-parse-hierarchy))
             (unless (assq (car cell) acc) (push cell acc))))))))
 
+(defun elistan-project-class-slots (files)
+  "Collect class slot types from all FILES into one CLASS -> ((SLOT . TYPE)...).
+The first definition seen for a class wins."
+  (let ((acc nil))
+    (dolist (file files (nreverse acc))
+      (when (file-readable-p file)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (dolist (cell (elistan-struct-parse-class-slots))
+            (unless (assq (car cell) acc) (push cell acc))))))))
+
 (defun elistan-project-check (files)
   "Check FILES as a project; return an alist of FILE -> list of report strings.
 Annotations from any file are visible to all (cross-file contract checking)."
   (let ((elistan-source-local (elistan-project-registry files))
-        (typespec-eval-types-class-parents (elistan-project-hierarchy files)))
+        (typespec-eval-types-class-parents (elistan-project-hierarchy files))
+        (elistan-walk-class-slots (elistan-project-class-slots files)))
     (mapcar (lambda (f) (cons f (elistan-batch-check-file f))) files)))
 
 (defun elistan-project-run ()

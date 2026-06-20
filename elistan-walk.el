@@ -111,6 +111,13 @@ any read is uncertain; they are kept at `unknown' to avoid false positives.")
 Bounds worst-case time so a pathological form — a huge macro-generated body, or
 a circular list from `#N=' read syntax — can never hang the checker.")
 
+(defvar elistan-walk-class-slots nil
+  "Alist CLASS -> ((SLOT . TYPE)...) of class slot types, keyed by bare slot name.
+A driver binds this (from `elistan-struct-parse-class-slots') so an
+`(oref OBJ SLOT)' / `(slot-value OBJ \\='SLOT)' read on a `(:class C)' object is
+typed as the slot's declared type.  Inheritance is resolved via
+`typespec-eval-types-class-parents'.")
+
 (defmacro elistan-walk--tick ()
   "Spend one unit of the analysis budget; abort the walk when it is exhausted."
   '(when (and elistan-walk--budget
@@ -176,8 +183,42 @@ With none surviving the result is `(never . FALLBACK-ENV)'."
      (elistan-walk--condition-case bodyform handlers env))
     (`(catch ,_ . ,body)
      (cons 'unknown (cdr (elistan-walk--progn body env))))
+    ;; EIEIO slot read: type the result as the slot's declared type.  `oref' is a
+    ;; macro with an unquoted slot symbol; `slot-value'/`eieio-oref' are
+    ;; functions with a quoted slot.  (Often unexpanded — eieio is rarely loaded
+    ;; during analysis — so match them syntactically.)
+    (`(oref ,obj ,(and slot (pred symbolp)))
+     (elistan-walk--oref obj slot env))
+    (`(,(or 'slot-value 'eieio-oref) ,obj (quote ,(and slot (pred symbolp))))
+     (elistan-walk--oref obj slot env))
     (`(,(pred symbolp) . ,_) (elistan-walk--call form env))
     (_ (cons 'unknown env))))
+
+(defun elistan-walk--slot-type (class slot)
+  "Return the declared type of SLOT in CLASS or an ancestor, or nil.
+Looks up `elistan-walk-class-slots', walking `typespec-eval-types-class-parents'
+for inherited slots (breadth-first, with a cycle guard)."
+  (let ((seen nil) (queue (list class)) (found nil))
+    (while (and queue (not found))
+      (let ((c (pop queue)))
+        (unless (memq c seen)
+          (push c seen)
+          (let ((cell (assq slot (cdr (assq c elistan-walk-class-slots)))))
+            (if cell
+                (setq found (cdr cell))
+              (setq queue (append queue
+                                  (cdr (assq c typespec-eval-types-class-parents)))))))))
+    found))
+
+(defun elistan-walk--oref (obj slot env)
+  "Walk an `oref'/`slot-value' read of literal SLOT on OBJ; return `(TYPE . ENV)'.
+When OBJ is a `(:class C)' object and SLOT is known, the result is the slot's
+declared type; otherwise `unknown'."
+  (let* ((r (elistan-walk-type obj env))
+         (objty (car r))
+         (class (and (eq (car-safe objty) :class) (cadr objty)))
+         (ty (and class (symbolp slot) (elistan-walk--slot-type class slot))))
+    (cons (or ty 'unknown) (cdr r))))
 
 (defun elistan-walk--lambda (arglist body)
   "Analyse a lambda's BODY for findings; return nil.
