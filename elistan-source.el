@@ -52,15 +52,11 @@
     (null           . (function (t) (:guard! null)))
     (not            . (function (t) (:guard! null)))
     ;; Non-returning functions: a `never' return drives divergence (ADR-0010).
-    (error                . (function (&rest mixed) never))
-    (signal               . (function (&rest mixed) never))
-    (user-error           . (function (&rest mixed) never))
-    (throw                . (function (&rest mixed) never))
+    ;; The common set (`error'/`signal'/`throw'/… ) now lives in
+    ;; `typespec-builtins' (consulted before this fallback); only the `cl-lib'
+    ;; return macros, which typespec does not register, remain here.
     (cl-return            . (function (&rest mixed) never))
     (cl-return-from       . (function (&rest mixed) never))
-    (keyboard-quit        . (function () never))
-    (abort-recursive-edit . (function () never))
-    (top-level            . (function () never))
     ;; A little ordinary coverage so v1 is useful out of the box.
     (length            . (function (sequence) integer))
     (concat            . (function (&rest sequence) string))
