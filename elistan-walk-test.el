@@ -141,11 +141,22 @@ when the tested value is provably disjoint from the guard type."
   (should (elistan-walk-test--of
            (elistan-walk-defun '(defun et-mk (x) (if (markerp x) 1 2)))
            'dead-branch))
-  ;; a sequence-typed value passed where it IS a sequence: no dead branch
-  ;; (sequencep is consistent), i.e. no false positive.
+  ;; a value provably WITHIN the guard type: the guard is always true, so the
+  ;; ELSE branch is dead.  This is the false-branch direction of narrowing,
+  ;; unlocked by typespec's strict (sound) subtype relation: a vector is always
+  ;; a sequence, so `(sequencep x)' on `x : vector' can never be false.
   (elistan-walk-test--declare 'et-seq '(function (vector) integer))
+  (let ((f (elistan-walk-test--of
+            (elistan-walk-defun '(defun et-seq (x) (if (sequencep x) 1 2)))
+            'dead-branch)))
+    (should f)
+    (should (eq (plist-get (elistan-finding-data f) :verdict) 'always-true))
+    (should (eq (plist-get (elistan-finding-data f) :dead-branch) 'else)))
+  ;; a value that only PARTLY overlaps the guard (neither contains the other):
+  ;; both branches are live, so no finding — the zero-false-positive case.
+  (elistan-walk-test--declare 'et-seq2 '(function ((or vector integer)) integer))
   (should-not (elistan-walk-test--of
-               (elistan-walk-defun '(defun et-seq (x) (if (sequencep x) 1 2)))
+               (elistan-walk-defun '(defun et-seq2 (x) (if (sequencep x) 1 2)))
                'dead-branch)))
 
 (ert-deftest elistan-walk-and-or-dead-guard ()

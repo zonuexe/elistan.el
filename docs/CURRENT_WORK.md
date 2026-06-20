@@ -28,7 +28,15 @@ The companion `../emacs-typespec` had a coordinated foundation pass this cycle
 - 12 source modules + 12 `*-test.el`.
 - **Quality:** full elpa sweep = **743 files → 23 findings, 0 crashes**, verified
   **order-stable** and every finding a confirmed true positive; in-scope
-  **recall 100%** (`.scratch/recall/`). See "Validation".
+  **recall 13/13 = 100%** (`.scratch/recall/`). See "Validation".
+- **This cycle:** added a **precise (strict) subtype relation** upstream in
+  typespec (`typespec-eval-types-type-subtype-strict-p`) and used it to reduce
+  `(diff SUB SUPER)` to `never` soundly — unlocking the **false-branch
+  direction** of guard narrowing (`(arrayp x)` with `x : string` ⇒ else dead).
+  Also fixed a latent typespec unsoundness it exposed (`(diff (const foo)
+  keyword)` wrongly `never`). elpa sweep unchanged at 23/0 (the lever is
+  additive and rarely fires on contract-free code), recall +1 (the new
+  `dead/else-subtype` case). typespec: **162 tests** green.
 
 ## Build / test / run
 
@@ -135,7 +143,8 @@ PARAM is provably non-nil); and the Elsa-DB return-type correction (−1 — rem
 `help-function-arglist` as never-string, see below).
 
 **Recall** (the other axis — `.scratch/recall/`): on a labelled in-scope bug
-corpus, **12/12 caught (100%)** at 0 false positives / 0 out-of-scope leaks. The
+corpus, **13/13 caught (100%)** at 0 false positives / 0 out-of-scope leaks
+(the 13th, `dead/else-subtype`, is the false-branch case unlocked this cycle). The
 measurement paid for itself by surfacing **three** real bugs (all fixed):
 1. **Literal-argument position drop** — a *detected* call mismatch on a literal
    arg (`(f 5)`) was discarded for lack of a source position; now falls back to
@@ -151,12 +160,15 @@ measurement paid for itself by surfacing **three** real bugs (all fixed):
    was wrongly "dead"; the "20 findings, 0 FP" baseline was really 19 TP + 1 FP.
    Fixed by `elistan-elsa--corrections` (overrides unsound DB return types).
 
-**Near-miss avoided this cycle:** a `diff(SUB, SUPER) = never` reduction was
-prototyped (to also catch the false-branch of guards like `(arrayp x)` on a
-string) but **reverted as unsound** — typespec's `type-subtype-p` is
-category-coarse (reports `(const "a") ⊑ (const "b")`, `symbol ⊑ keyword`), which
-is safe for `meet` but under-approximates for `diff` → false positives. Caught
-on the corpus before commit. See "Deferred" #6 (precise subtype check).
+**Resolved (was a near-miss):** a `diff(SUB, SUPER) = never` reduction had been
+prototyped earlier to catch the false-branch of guards (`(arrayp x)` on a
+string) but was reverted as unsound, because the only available subtype check
+(`type-subtype-p`) is category-coarse (reports `symbol ⊑ keyword`, distinct
+`const ⊑ const`) — safe for `meet`, under-approximating for `diff`. **This cycle
+implemented the sound version** (`typespec-eval-types-type-subtype-strict-p`, see
+"typespec coordination" #7) and wired it into `diff`, so the false-branch
+direction now works without the over-report. Re-validated: elpa sweep still
+23/0/order-stable; recall 13/13 (added `dead/else-subtype`).
 
 Reproduce the full sweep (load Elsa DBs, then check every elpa file):
 
@@ -204,10 +216,23 @@ Status after the `../emacs-typespec` foundation pass:
 6. ~~**Class types — static subtyping**~~ — *done end-to-end* (typespec
    `6e393ba` + elistan EIEIO work): typespec decides `(:class C)` ⊑ `(:class P)`
    from `typespec-eval-types-class-parents`, and elistan emits `(:class)` and
-   supplies the hierarchy. Open follow-up: typespec's `type-subtype-p` is
-   **category-coarse** (see the near-miss in "Validation") — a *precise* subtype
-   relation would let `diff(SUB, SUPER)` reduce to `never` soundly and unlock the
-   false-branch direction of guard narrowing. See "Deferred" #6.
+   supplies the hierarchy.
+7. ~~**Precise (strict) subtype relation**~~ — *done this cycle, upstream.* Added
+   `typespec-eval-types-type-subtype-strict-p` (in `typespec-eval-numeric.el`,
+   the layer that has both the type hierarchy and numeric range containment): a
+   **sound** counterpart to the category-coarse `type-subtype-p` — it never
+   over-reports (no `symbol ⊑ keyword`, no overlapping-range collapse), widening
+   only the *sub* side to its category and consulting the precise elisp
+   hierarchy/range containment. `typespec-eval-op-diff` now reduces `(diff SUB
+   SUPER)` to `never` when strict-subtype holds, which **unlocks the
+   false-branch direction of guard narrowing** in elistan (e.g. `(arrayp x)`
+   with `x : string` ⇒ the else branch is dead). The const-minus-type branch of
+   `diff` was routed through the strict relation too, fixing a **latent
+   unsoundness**: `(diff (const foo) keyword)` used to reduce to `never` (it used
+   the coarse subtype on the value's category — `foo` is a symbol, "same
+   category" as `keyword`), now correctly stays `(const foo)`. Containment logic
+   was promoted to `typespec-eval-numeric-range-subset-p` (the call-checker's
+   `--numeric-subtype-p` delegates to it). typespec `make check` = 162/162.
 
 ## Deferred / next steps (rough feasibility order)
 
@@ -260,13 +285,19 @@ Status after the `../emacs-typespec` foundation pass:
 ### Remaining work (for the next session)
 
 **Highest value:**
-- **Precise subtype relation in typespec** — `type-subtype-p` is category-coarse
-  (reports e.g. `symbol ⊑ keyword`, distinct const ⊑ const). A precise relation
-  would (a) let `diff(SUB, SUPER)` reduce to `never` soundly → unlock the
-  *false-branch* direction of guard narrowing (e.g. `(arrayp x)` with x : string
-  ⇒ else dead), and (b) generally sharpen meet/subtyping. Medium typespec task;
-  validate the elistan sweep stays zero-FP after. (Why it matters: the only
-  recall/precision lever left that doesn't trade against zero-FP.)
+- ~~**Precise subtype relation in typespec**~~ — *done this cycle* (see "typespec
+  coordination" #7). `typespec-eval-types-type-subtype-strict-p` is the sound
+  relation; `diff` uses it for the `never` reduction; the false-branch direction
+  of guard narrowing now works (recall `dead/else-subtype`), and a latent const
+  unsoundness was fixed. elpa sweep stayed zero-FP (23/0/order-stable).
+  - *Possible follow-up (lower value):* the strict relation is deliberately
+    conservative for structured supers — it widens only the *sub* side to its
+    category, so e.g. `(vector integer) ⊑ (vector number)` (covariant element)
+    or function/tuple subtyping are answered `nil` (sound, just imprecise). The
+    call-checker's `--container-subtype-p`/`--function-subtype-p` already model
+    these for the *acceptance* relation; promoting them into the strict relation
+    would sharpen `diff` further, but guards never produce such supers, so the
+    marginal value is small.
 
 **Lower value / thorny** (see PRD "Deferred / future"):
 - **Flycheck backend** — postponed by request; needs an optional-dependency

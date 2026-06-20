@@ -57,6 +57,13 @@
      :code "\
 ;; (k :: (function (string) integer))
 (defun k (x) (and (integerp x) x))")
+    ;; False-branch direction: a value provably WITHIN the guard type makes the
+    ;; guard always true, so the ELSE branch is dead.  Unlocked by typespec's
+    ;; strict (sound) subtype relation driving `(diff …)' to `never'.
+    (:name "dead/else-subtype" :scope in :expect dead-branch
+     :code "\
+;; (es :: (function (string) integer))
+(defun es (x) (if (arrayp x) 1 2))")
 
     ;; ---- return-type-mismatch ----
     (:name "return/elsa" :scope in :expect return-type-mismatch
