@@ -91,7 +91,8 @@ The v1 checker front-end is implemented. Design rationale lives in
 - `elistan-walk.el` — the analysis core: `elistan-walk-type` threads
   `(TYPE . ENV)` through special forms with divergence-aware confluence;
   `elistan-walk-defun` / `elistan-check-forms` are the entry points. Descends
-  into lambda bodies (params + captured vars `unknown`). Three findings:
+  into lambda bodies (params + captured vars `unknown`); types `oref`/
+  `slot-value` reads via `elistan-walk-class-slots`. Three findings:
   `call-type-mismatch`, `dead-branch`, `return-type-mismatch`.
 - `elistan-elsa.el` — reads Elsa-style `;; (NAME :: TYPE)` annotation comments
   as an in-file type source, and (opt-in) loads Elsa's `elsa-typed-*.el` builtin
@@ -102,9 +103,10 @@ The v1 checker front-end is implemented. Design rationale lives in
   types (reader return = the slot's `:type`, conservatively translated; honours
   the `:copier` option name). Instances are typed `(:class NAME)`; the hierarchy
   (`:include`/defclass parents, via `elistan-struct-parse-hierarchy`) feeds
-  typespec's static `(:class)` subtyping, and inherited `:include` accessors are
-  registered. Remaining EIEIO work: slot-typed `oref`/`oset`, cross-file
-  inheritance.
+  typespec's static `(:class)` subtyping, inherited `:include` accessors are
+  registered (cross-file in project mode), and the slot registry
+  (`elistan-struct-parse-class-slots`) types `oref`/`slot-value` reads in the
+  walker. Remaining EIEIO work: `oset`/setf value checking.
 - `elistan-declare.el` — reads the analysed file's own typespec declarations:
   the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
   forms. Statically extracted (forms are read, not eval'd) and bound into

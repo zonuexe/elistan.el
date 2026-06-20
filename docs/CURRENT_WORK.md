@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **66 ert tests**, green on source *and* byte-compiled (`make check`).
+- **69 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
@@ -176,21 +176,21 @@ Status after the `../emacs-typespec` foundation pass:
    exposed and fixed a latent `setq` soundness bug (reassigning a non-lexical
    var now invalidates its narrowing), removing one pre-existing FP
    (logview.el:3227). Sweep: 743 files / 19 findings / 0 crashes.
-4. **Full EIEIO** — foundation + (a)/(b) **done**:
+4. **Full EIEIO** — essentially **done**:
    - ~~(a) emit `(:class NAME)` + supply hierarchy~~ — done (typespec `6e393ba`
      static subtyping; elistan emits `(:class)`, drivers bind
      `typespec-eval-types-class-parents`). Subclass accepted where superclass
      wanted; `(child-p x)` narrows a superclass var to the subclass.
-   - ~~(b) inherited `:include` accessors~~ — done (same-buffer resolution).
-   - **(c) slot-typed `oref`/`oset`** — *remaining*. `(oref obj slot)` →
-     the slot's `:type`; needs a class→slot-type table (and obj's class). The
-     generic `oref`/`oset` are less common than named accessors (already typed).
-   - **Cross-file inherited accessors** (project mode) — *remaining*: a parent
-     in another file currently ends the chain; would need a project-wide
-     struct-info pass.
+   - ~~(b) inherited `:include` accessors~~ — done (same-buffer + cross-file in
+     project mode via `elistan-project-struct-infos`).
+   - ~~(c) slot-typed `oref`/`slot-value` reads~~ — done
+     (`elistan-walk--oref` + `elistan-walk-class-slots`, inheritance-aware).
+   - *Remaining (optional):* `oset`/`(setf (oref …) …)` **value checking** — a
+     defclass slot `:type` is EIEIO-enforced, so a provably-wrong assigned value
+     could be flagged (sound), but it is rarer and not yet implemented.
    Design note: under zero-FP + EIEIO's open world, class subtyping adds
    *acceptance/narrowing precision*, not rejection of unrelated classes (that
-   would be unsound) — so the additive parts (b)/(c) are where the value is.
+   would be unsound).
 5. **Flycheck backend** — postponed by request (needs an optional-dependency
    build decision: flycheck isn't on the `make` load-path).
 6. **Lower-value / thorny deferred** (see PRD "Deferred / future"):
