@@ -148,6 +148,17 @@ A slot typed integer makes `(stringp …)' on it a provably dead branch."
                  (elistan-walk-defun '(defun et-os (obj) (oset obj other "x") 0))
                  'slot-type-mismatch))))
 
+(ert-deftest elistan-walk-macroexpand-no-compiler-macro ()
+  "The walker's macroexpand is source-faithful: it does not apply compiler-macros.
+This keeps expansion deterministic — compiler-macro availability depends on which
+libraries are loaded, which would otherwise make analysis order-dependent."
+  (cl-define-compiler-macro et-cm-fn (x) (ignore x) :inlined)
+  (defun et-cm-fn (x) x)
+  (unwind-protect
+      (should (equal (elistan-walk--macroexpand '(et-cm-fn 42)) '(et-cm-fn 42)))
+    (function-put 'et-cm-fn 'compiler-macro nil)
+    (fmakunbound 'et-cm-fn)))
+
 (ert-deftest elistan-walk-return-mismatch ()
   "A body type incompatible with the declared return is reported (category 3)."
   (elistan-walk-test--declare 'et-h '(function (string) integer))

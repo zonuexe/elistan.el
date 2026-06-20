@@ -583,6 +583,21 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
                               env p (if rest (list 'list rest) 'list))))))))
     env))
 
+(defun elistan-walk--macroexpand (form)
+  "Like `macroexpand-all' on FORM, but with compiler-macro expansion inhibited.
+The walker analyses the source as written; compiler-macros inline definitions
+\(e.g. `char-before' -> `(char-after (1- (or pos (point))))') whose availability
+depends on which libraries happen to be loaded, which would make the analysis
+order-dependent and surface findings about *inlined library internals* rather
+than the user's code.  Suppressing them keeps expansion deterministic and
+source-faithful.  Falls back to plain `macroexpand-all' if the internal hook is
+absent (older Emacs)."
+  (if (fboundp 'macroexp--compiler-macro)
+      (cl-letf (((symbol-function 'macroexp--compiler-macro)
+                 (lambda (_cmacro exp) exp)))
+        (macroexpand-all form))
+    (macroexpand-all form)))
+
 (defun elistan-walk-defun (form)
   "Analyse a function-defining FORM and return a list of `elistan-finding'."
   ;; Bind the flag around the whole match so positioned symbols (from a
@@ -601,7 +616,7 @@ Tolerates an improper (dotted) FORM by iterating only its proper prefix."
               ;; unexpanded body rather than crash (ADR-0005).
               (expanded (condition-case nil
                             (let ((lexical-binding t))
-                              (macroexpand-all (cons 'progn body)))
+                              (elistan-walk--macroexpand (cons 'progn body)))
                           (error (cons 'progn body)))))
          (catch 'elistan-walk--over
            (let* ((elistan-walk--closure-vars
