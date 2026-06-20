@@ -80,8 +80,7 @@
       (should (equal (cdr (assq 'qux-aa db)) '(function (qux) integer)))
       ;; :type after another keyword is still found.
       (should (equal (cdr (assq 'qux-bb db)) '(function (qux) string)))
-      ;; boolean is spelled as the explicit t/nil union (typespec quirk).
-      (should (equal (cdr (assq 'qux-cc db)) '(function (qux) (or (const t) null))))
+      (should (equal (cdr (assq 'qux-cc db)) '(function (qux) boolean)))
       ;; No :type stays `mixed'.
       (should (equal (cdr (assq 'qux-dd db)) '(function (qux) mixed))))))
 

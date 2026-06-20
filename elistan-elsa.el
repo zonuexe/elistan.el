@@ -43,10 +43,7 @@
   "Translate Elsa type notation TY to a typespec type."
   (pcase ty
     ('int 'integer)
-    ;; Elsa's `bool' is *explicitly* t or nil.  Spelling it as that union
-    ;; (rather than typespec's opaque `boolean') keeps narrowing precise and
-    ;; sidesteps a typespec bug where `boolean' n (const nil)' yields `never'.
-    ('bool '(or (const t) null))
+    ('bool 'boolean)
     ('nil 'null)
     ((pred symbolp) ty)
     (`(is ,inner) (list :guard! (elistan-elsa--translate-type inner)))

@@ -27,7 +27,7 @@
 (ert-deftest elistan-elsa-translate ()
   "Elsa type notation translates to typespec notation."
   (should (equal (elistan-elsa--translate-type 'int) 'integer))
-  (should (equal (elistan-elsa--translate-type 'bool) '(or (const t) null)))
+  (should (equal (elistan-elsa--translate-type 'bool) 'boolean))
   (should (equal (elistan-elsa--translate-type 'nil) 'null))
   (should (equal (elistan-elsa--translate-type 'string) 'string))
   (should (equal (elistan-elsa--translate-type '(is string)) '(:guard! string)))
@@ -36,7 +36,7 @@
   (should (equal (elistan-elsa--translate-type '(cons int string))
                  '(cons integer string)))
   (should (equal (elistan-elsa--translate-type '(function (int string) bool))
-                 '(function (integer string) (or (const t) null)))))
+                 '(function (integer string) boolean))))
 
 (ert-deftest elistan-elsa-parse ()
   "Annotation comments are parsed; only function types are registered."

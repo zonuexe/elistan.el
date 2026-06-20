@@ -138,8 +138,7 @@ Subtracting from the dynamic leaves it dynamic."
     (and (not (elistan-type-dynamic-p ty))
          (not (elistan-type-top-p ty))
          (not (memq ty '(null never)))
-         ;; A provably-nil type is obviously not never-nil (guards against a
-         ;; typespec quirk where `(const nil)' mis-intersects with `null').
+         ;; A provably-nil type is obviously not never-nil.
          (not (elistan-type-always-nil-p ty))
          ;; nil is not a member: `null' is not acceptable where TY is expected.
          (not (elistan-type-consistent-p 'null ty)))))

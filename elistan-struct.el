@@ -80,10 +80,6 @@ false positive."
     ;; result look like dead code.
     ((or 'nil 't) 'mixed)
     ('null 'null)
-    ;; typespec mis-intersects opaque `boolean' with nil (`boolean' n
-    ;; `(const nil)' = never); spell it as the explicit t/nil union, as
-    ;; `elistan-elsa--translate-type' does.
-    ('boolean '(or (const t) null))
     ;; Any other atomic type symbol: either a primitive typespec handles
     ;; directly (integer, string, …) or an opaque class/alias name, which is
     ;; never provably disjoint from anything — both are false-positive-free.

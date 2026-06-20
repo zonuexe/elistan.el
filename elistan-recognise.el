@@ -64,9 +64,8 @@
 
 (defun elistan-recognise--const (form)
   "Return the type a literal FORM narrows to, or nil.
-The nil constant becomes the `null' type rather than `(const nil)': typespec
-handles `null' in `meet'/`diff' reliably, whereas `(const nil)' currently
-mis-intersects to `never'."
+The nil constant becomes the `null' type, the canonical spelling of the {nil}
+singleton for `meet'/`diff'."
   (cond
    ((and (consp form) (eq (car form) 'quote))
     (if (null (cadr form)) 'null (list 'const (cadr form))))
