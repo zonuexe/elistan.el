@@ -92,10 +92,12 @@ The v1 checker front-end is implemented. Design rationale lives in
   `(TYPE . ENV)` through special forms with divergence-aware confluence;
   `elistan-walk-defun` / `elistan-check-forms` are the entry points. Descends
   into lambda bodies (params + captured vars `unknown`); types `oref`/
-  `slot-value` reads and checks `oset` writes via `elistan-walk-class-slots`;
-  flags provably-constant guards in `and`/`or` operands; macroexpands
-  deterministically (compiler-macro inlining inhibited, so analysis is
-  source-faithful and order-independent). Four findings: `call-type-mismatch`,
+  `slot-value` reads and checks `oset` *and* `(setf (oref/slot-value …) …)`
+  writes via `elistan-walk-class-slots` (it `(require)`s eieio so setf-based
+  slot writes expand to `eieio-oset` rather than being mangled by setf's generic
+  gv fallback); flags provably-constant guards in `and`/`or` operands;
+  macroexpands deterministically (compiler-macro inlining inhibited, so analysis
+  is source-faithful and order-independent). Four findings: `call-type-mismatch`,
   `dead-branch`, `return-type-mismatch`, `slot-type-mismatch`.
 - `elistan-elsa.el` — reads Elsa-style `;; (NAME :: TYPE)` annotation comments
   as an in-file type source, and (opt-in) loads Elsa's `elsa-typed-*.el` builtin
@@ -109,8 +111,8 @@ The v1 checker front-end is implemented. Design rationale lives in
   (`:include`/defclass parents, via `elistan-struct-parse-hierarchy`) feeds
   typespec's static `(:class)` subtyping, inherited `:include` accessors are
   registered (cross-file in project mode), and the slot registry
-  (`elistan-struct-parse-class-slots`) types `oref`/`slot-value` reads in the
-  walker. Remaining EIEIO work: `oset`/setf value checking.
+  (`elistan-struct-parse-class-slots`) types `oref`/`slot-value` reads and
+  `oset`/`(setf (oref …) …)` writes in the walker.
 - `elistan-declare.el` — reads the analysed file's own typespec declarations:
   the `(typespec #'NAME SPEC)` macro and `(declare (typespec-ftype SPEC))` defun
   forms. Statically extracted (forms are read, not eval'd) and bound into

@@ -28,15 +28,21 @@ The companion `../emacs-typespec` had a coordinated foundation pass this cycle
 - 12 source modules + 12 `*-test.el`.
 - **Quality:** full elpa sweep = **743 files → 23 findings, 0 crashes**, verified
   **order-stable** and every finding a confirmed true positive; in-scope
-  **recall 13/13 = 100%** (`.scratch/recall/`). See "Validation".
-- **This cycle:** added a **precise (strict) subtype relation** upstream in
-  typespec (`typespec-eval-types-type-subtype-strict-p`) and used it to reduce
-  `(diff SUB SUPER)` to `never` soundly — unlocking the **false-branch
-  direction** of guard narrowing (`(arrayp x)` with `x : string` ⇒ else dead).
-  Also fixed a latent typespec unsoundness it exposed (`(diff (const foo)
-  keyword)` wrongly `never`). elpa sweep unchanged at 23/0 (the lever is
-  additive and rarely fires on contract-free code), recall +1 (the new
-  `dead/else-subtype` case). typespec: **162 tests** green.
+  **recall 14/14 = 100%** (`.scratch/recall/`). See "Validation".
+- **This cycle (two features):**
+  1. **Precise (strict) subtype relation** upstream in typespec
+     (`typespec-eval-types-type-subtype-strict-p`), used to reduce `(diff SUB
+     SUPER)` to `never` soundly — unlocking the **false-branch direction** of
+     guard narrowing (`(arrayp x)` with `x : string` ⇒ else dead). Also fixed a
+     latent typespec unsoundness it exposed (`(diff (const foo) keyword)` wrongly
+     `never`). typespec: **162 tests** green.
+  2. **`(setf (oref …) …)` slot-write checking** — the walker now `(require)`s
+     eieio, so the idiomatic setf-based slot write expands to `eieio-oset`
+     (instead of `setf`'s generic gv fallback mangling the place when eieio is
+     unloaded) and is checked like `oset`. Closed a real recall gap.
+  Both validated: elpa sweep **byte-identical at 23/0/order-stable** (both levers
+  are additive and don't fire on the corpus's contract-free / type-consistent
+  code), recall +2 (`dead/else-subtype`, `slot/setf-oref`).
 
 ## Build / test / run
 
@@ -104,7 +110,9 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
   `(TYPE . ENV)` with divergence-aware confluence; `elistan-walk-defun` /
   `elistan-check-forms` are the entry points. Descends into lambda bodies
   (params + captured vars `unknown`); types `oref`/`slot-value` reads and checks
-  `oset` writes (`elistan-walk-class-slots`); flags provably-constant guards in
+  `oset` *and* `(setf (oref/slot-value …) …)` writes (the latter via the eieio
+  `(require)` so setf expands to `eieio-oset`) (`elistan-walk-class-slots`);
+  flags provably-constant guards in
   `and`/`or` operands (rest unreachable). `elistan-walk--macroexpand`
   **inhibits compiler-macro inlining** so expansion is deterministic and
   source-faithful (not load-order-dependent). **Per-defun work budget** +
@@ -143,8 +151,9 @@ PARAM is provably non-nil); and the Elsa-DB return-type correction (−1 — rem
 `help-function-arglist` as never-string, see below).
 
 **Recall** (the other axis — `.scratch/recall/`): on a labelled in-scope bug
-corpus, **13/13 caught (100%)** at 0 false positives / 0 out-of-scope leaks
-(the 13th, `dead/else-subtype`, is the false-branch case unlocked this cycle). The
+corpus, **14/14 caught (100%)** at 0 false positives / 0 out-of-scope leaks
+(this cycle added `dead/else-subtype` — the false-branch case — and
+`slot/setf-oref` — the idiomatic EIEIO slot write). The
 measurement paid for itself by surfacing **three** real bugs (all fixed):
 1. **Literal-argument position drop** — a *detected* call mismatch on a literal
    arg (`(f 5)`) was discarded for lack of a source position; now falls back to
@@ -168,7 +177,7 @@ string) but was reverted as unsound, because the only available subtype check
 implemented the sound version** (`typespec-eval-types-type-subtype-strict-p`, see
 "typespec coordination" #7) and wired it into `diff`, so the false-branch
 direction now works without the over-report. Re-validated: elpa sweep still
-23/0/order-stable; recall 13/13 (added `dead/else-subtype`).
+23/0/order-stable; recall includes `dead/else-subtype`.
 
 Reproduce the full sweep (load Elsa DBs, then check every elpa file):
 
@@ -270,9 +279,15 @@ Status after the `../emacs-typespec` foundation pass:
      (`elistan-walk--oref` + `elistan-walk-class-slots`, inheritance-aware).
    - ~~(d) `oset`/`eieio-oset` value checking~~ — done
      (`slot-type-mismatch` finding; gated on provable disjointness, EIEIO
-     enforces defclass slot `:type`). `(setf (oref …) …)` is covered when it
-     macroexpands to `eieio-oset`; the unexpanded `setf` place form is not yet
-     matched (minor).
+     enforces defclass slot `:type`).
+   - ~~(e) `(setf (oref …) …)` / `(setf (slot-value …) …)` writes~~ — *done this
+     cycle.* `elistan-walk.el` now `(require)`s eieio, so these expand to
+     `eieio-oset` and are checked like `oset`. (Without eieio loaded, `setf` has
+     no place expander for `oref` and its generic gv fallback mangles the form —
+     the slot name is evaluated as a variable — so the write was invisible.
+     Loading eieio unconditionally + upfront is deterministic; compiler-macros
+     stay inhibited in `elistan-walk--macroexpand`.) Sweep byte-identical at
+     23/0; recall +1 (`slot/setf-oref`).
    Design note: under zero-FP + EIEIO's open world, class subtyping adds
    *acceptance/narrowing precision*, not rejection of unrelated classes (that
    would be unsound).
@@ -317,8 +332,9 @@ Status after the `../emacs-typespec` foundation pass:
 - **changed-only incremental** — perf only; the checker is ~6s for all of elpa.
 - **adopt typespec's public splitter** (`typespec-eval-call-split-argspecs`) in
   `elistan-source-arglist` — DRY + free `&key` handling (coordination #5).
-- **`(setf (oref …) …)` place form** — covered only when it macroexpands to
-  `eieio-oset`; the unexpanded `setf` place isn't matched (minor).
+- ~~**`(setf (oref …) …)` place form**~~ — *done this cycle* (Deferred #4(e)):
+  the walker `(require)`s eieio so setf-based slot writes expand to `eieio-oset`
+  and are checked.
 
 **Out of scope:** optional style-lint layer (ADR-0013; Elsa/checkdoc/
 package-lint cover it).

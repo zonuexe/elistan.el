@@ -207,6 +207,26 @@ when the tested value is provably disjoint from the guard type."
     ;; an unknown slot -> no finding (no false positive)
     (should-not (elistan-walk-test--of
                  (elistan-walk-defun '(defun et-os (obj) (oset obj other "x") 0))
+                 'slot-type-mismatch))
+    ;; `(setf (oref …) …)' / `(setf (slot-value …) …)' are the idiomatic slot
+    ;; writes; with eieio loaded they expand to `eieio-oset' and are checked
+    ;; like `oset' (this was a recall gap when eieio was unloaded — `setf' then
+    ;; mangled the place instead of expanding it).
+    (let ((f (elistan-walk-test--of
+              (elistan-walk-defun
+               '(defun et-os (obj) (setf (oref obj width) "wide") 0))
+              'slot-type-mismatch)))
+      (should f)
+      (should (equal (plist-get (elistan-finding-data f) :expected) 'integer))
+      (should (equal (plist-get (elistan-finding-data f) :actual) 'string)))
+    (should (elistan-walk-test--of
+             (elistan-walk-defun
+              '(defun et-os (obj) (setf (slot-value obj 'width) "wide") 0))
+             'slot-type-mismatch))
+    ;; a compatible `setf' value -> no finding (no false positive)
+    (should-not (elistan-walk-test--of
+                 (elistan-walk-defun
+                  '(defun et-os (obj) (setf (oref obj width) 5) 0))
                  'slot-type-mismatch))))
 
 (ert-deftest elistan-walk-macroexpand-no-compiler-macro ()

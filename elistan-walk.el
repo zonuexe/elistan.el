@@ -34,6 +34,17 @@
 ;;; Code:
 
 (require 'cl-lib)
+;; EIEIO is loaded so the walker's `macroexpand-all' uses the real place
+;; expanders for slot writes.  Without it, `(setf (oref obj slot) val)' has no
+;; setf-method, so `setf' falls back to a generic gv setter that mangles the
+;; form (the slot name is evaluated as a variable) — the slot write is then
+;; invisible and unchecked.  With EIEIO loaded, every slot write — `oset',
+;; `(setf (oref …) …)', `(setf (slot-value …) …)', `(cl-incf (oref …))' —
+;; expands to `eieio-oset', which the walker already checks.  Loading it
+;; unconditionally and upfront keeps expansion deterministic (the determinism
+;; hazard is *incremental* library loading across a sweep, not a fixed
+;; dependency; compiler-macros stay inhibited in `elistan-walk--macroexpand').
+(require 'eieio)
 (require 'elistan)
 (require 'elistan-type)
 (require 'elistan-source)

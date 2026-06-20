@@ -81,6 +81,13 @@
 (defclass w () ((width :type integer :initarg :width)))
 ;; (f :: (function ((:class w)) integer))
 (defun f (obj) (oset obj width \"wide\") 0)")
+    ;; The idiomatic `(setf (oref …) …)' slot write (expands to `eieio-oset'
+    ;; once eieio is loaded during analysis).
+    (:name "slot/setf-oref" :scope in :expect slot-type-mismatch
+     :code "\
+(defclass w () ((width :type integer :initarg :width)))
+;; (f :: (function ((:class w)) integer))
+(defun f (obj) (setf (oref obj width) \"wide\") 0)")
 
     ;; ==== OUT OF SCOPE (expected misses — quantify the design ceiling) ====
     (:name "miss/builtin-arg" :scope out :expect nil

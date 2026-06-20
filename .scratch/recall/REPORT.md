@@ -22,16 +22,18 @@ emacs -Q --batch -L . -L ../emacs-typespec -l .scratch/recall/recall.el
 ## Result
 
 ```
-In-scope recall : 13/13 caught (100%)
+In-scope recall : 14/14 caught (100%)
 Precision (correct cases): 0 false positives
 Out-of-scope leaks       : 0/6 emitted a finding
 ```
 
 (Was 11/12 until `and`/`or` constant-guard detection landed; see
 `MACROEXPAND-LEAK.md` for the determinism fix that made that feature safe.
-The 13th case, `dead/else-subtype`, is the false-branch direction of guard
-narrowing — `(arrayp x)` on a `string` makes the guard always-true, so the else
-branch is dead — unlocked by typespec's sound strict subtype relation.)
+`dead/else-subtype` is the false-branch direction of guard narrowing —
+`(arrayp x)` on a `string` makes the guard always-true, so the else branch is
+dead — unlocked by typespec's sound strict subtype relation.  `slot/setf-oref`
+is the idiomatic `(setf (oref …) …)` slot write, checked once the walker loads
+eieio so setf expands to `eieio-oset`.)
 
 - **In-scope recall 92%** across all four finding categories
   (call-type-mismatch, dead-branch, return-type-mismatch, slot-type-mismatch),
