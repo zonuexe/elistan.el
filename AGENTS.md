@@ -90,8 +90,9 @@ The v1 checker front-end is implemented. Design rationale lives in
 - `elistan-finding.el` — `cl-defstruct elistan-finding` + formatter.
 - `elistan-walk.el` — the analysis core: `elistan-walk-type` threads
   `(TYPE . ENV)` through special forms with divergence-aware confluence;
-  `elistan-walk-defun` / `elistan-check-forms` are the entry points. Three
-  findings: `call-type-mismatch`, `dead-branch`, `return-type-mismatch`.
+  `elistan-walk-defun` / `elistan-check-forms` are the entry points. Descends
+  into lambda bodies (params + captured vars `unknown`). Three findings:
+  `call-type-mismatch`, `dead-branch`, `return-type-mismatch`.
 - `elistan-elsa.el` — reads Elsa-style `;; (NAME :: TYPE)` annotation comments
   as an in-file type source, and (opt-in) loads Elsa's `elsa-typed-*.el` builtin
   type databases for coverage; translates Elsa notation to typespec. Drivers bind

@@ -13,7 +13,7 @@ extended** with project-wide checking and a defstruct/defclass type source.
 
 - Branch: **`master`** (local repo, no remote). Working tree clean; everything
   committed. (There is no `main`; `master` is the default.)
-- **58 ert tests**, green on source *and* byte-compiled (`make check`).
+- **63 ert tests**, green on source *and* byte-compiled (`make check`).
 - 12 source modules + 12 `*-test.el`.
 
 ## Build / test / run
@@ -70,7 +70,8 @@ emacs -Q --batch -L . -L ../emacs-typespec -l elistan-project \
 - `elistan-finding.el` — `cl-defstruct elistan-finding` + formatter.
 - `elistan-walk.el` — the analysis core. `elistan-walk-type` threads
   `(TYPE . ENV)` with divergence-aware confluence; `elistan-walk-defun` /
-  `elistan-check-forms` are the entry points. **Per-defun work budget** +
+  `elistan-check-forms` are the entry points. Descends into lambda bodies
+  (params + captured vars `unknown`). **Per-defun work budget** +
   symbols-with-pos. Three findings: `call-type-mismatch`, `dead-branch`,
   `return-type-mismatch`.
 - `elistan-batch.el` — batch/CLI driver; merges in-file annotations + struct
@@ -94,9 +95,11 @@ positive — this is the project's defining constraint. Key derived rules:
 
 ## Validation
 
-Swept Elsa + the full elpa set (`~/.emacs.d/elpa`, 202 packages) with Elsa's
-builtin DBs loaded: **782 files → 19 findings, 0 crashes, ~4s**. Every finding
-verified to be genuine dead code (zero false positives). Reproduce:
+Swept Elsa + the full elpa set (`~/.emacs.d/elpa`) with Elsa's builtin DBs
+loaded: **743 files → 19 findings, 0 crashes, ~6s** (corpus drifts as packages
+update). Every finding verified to be genuine dead code (zero false positives) —
+including after lambda-body descent, which added one genuine finding and, via
+the accompanying `setq` soundness fix, removed one pre-existing FP. Reproduce:
 
 ```elisp
 ;; emacs -Q --batch -L . -L ../emacs-typespec -l elistan-batch --eval '(...)'
@@ -154,12 +157,31 @@ Some were spawned as task chips in `../emacs-typespec`:
    (no such declaration handler exists in typespec); `typespec-ftype` is
    typespec's experimental `declare` spec. Only function/`:forall` specs are
    registered.
-3. **Full EIEIO** — inheritance subtyping + slot-typed `oref`/`oset`. Blocked on
+3. ~~**Lambda body descent**~~ — *done* (`elistan-walk.el`). Lambda bodies are
+   walked for findings (params + captured vars `unknown` → zero-FP). This also
+   exposed and fixed a latent `setq` soundness bug (reassigning a non-lexical
+   var now invalidates its narrowing), removing one pre-existing FP
+   (logview.el:3227). Sweep: 743 files / 19 findings / 0 crashes.
+4. **Full EIEIO** — inheritance subtyping + slot-typed `oref`/`oset`. Blocked on
    typespec class types (item 6 above) — coordinate.
-4. **Flycheck backend**, **changed-only incremental** re-analysis,
-   **`&key`/`cl-defun`** params, **non-function top-level forms**, **precise
-   `catch`/`condition-case`** throw-tag tracking — see PRD "Deferred / future".
-5. **Optional style-lint layer** — explicitly out of the type/flow scope
+5. **Flycheck backend** — postponed by request (needs an optional-dependency
+   build decision: flycheck isn't on the `make` load-path).
+6. **Lower-value / thorny deferred** (see PRD "Deferred / future"):
+   - **non-function top-level forms** — *unsafe naively*: most top-level
+     definition macros (`compat-defun`, `cl-defmethod`, `use-package`, …) are
+     not loaded during analysis, so `macroexpand-all` leaves them and walking
+     them as expressions yields FPs + crashes (verified empirically). A sound
+     version must gate on "head is a loaded function", which excludes the
+     interesting macro targets — i.e. the safe slice is low value.
+   - **`&key`/`cl-defun` params** — elistan only argument-checks against
+     authoritative in-file contracts, which essentially never declare typed
+     `&key` params today, so low marginal value (typespec *does* support `&key`
+     in `typespec-eval-call`, so result typing already benefits).
+   - **precise `catch`/`condition-case`** — basic `throw` divergence already
+     works via the `never` fallback; the precise tag-matching is low value.
+   - **changed-only incremental** — perf only; the checker is already ~6s for
+     the whole elpa corpus.
+7. **Optional style-lint layer** — explicitly out of the type/flow scope
    (ADR-0013); Elsa/checkdoc/package-lint cover it.
 
 ## Gotchas / notes

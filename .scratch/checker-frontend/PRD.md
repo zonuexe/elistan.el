@@ -107,11 +107,12 @@ unless it reduces to (1).
   `null` type and spelling Elsa `bool` as `(or (const t) null)`; the foundation
   should handle nil constants in range/boolean intersection.
 - **`let`/`let*`/`lambda`** scoping is handled mechanically by the threading
-  model (typed inits, sequential `let*`, shadowing); not separately grilled.
-  (Lambda *bodies* are not yet descended into — deferred.)
-- **Known limitation:** forms are read, not evaluated, so `declare`-based
-  typespec declarations in the analysed file are not auto-registered. Static
-  extraction of in-file declarations is future work.
+  model (typed inits, sequential `let*`, shadowing). Lambda *bodies* are now
+  descended into (params + captured vars are `unknown`, so closures stay
+  zero-FP).
+- **Known limitation:** forms are read, not evaluated. In-file type sources are
+  still extracted statically — Elsa annotations, `cl-defstruct`/`defclass`, and
+  the file's own `(typespec …)` declarations (`elistan-declare.el`).
 
 ## Walk targets (from AGENTS.md roadmap)
 
